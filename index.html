@@ -1,392 +1,465 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>Project Brief Assistant</title>
 
-  <!-- Styling (Tailwind CDN). If Tailwind lags, the inline CSS below keeps everything readable. -->
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    /* Minimal fallback so you don't just see one line if Tailwind hasn't hydrated yet */
-    body { font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin: 16px; }
-  </style>
+  <style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:16px}</style>
 
   <!-- React UMD -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 
-  <!-- Babel Standalone (must come BEFORE the text/babel script) -->
+  <!-- Babel (compile JSX) -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- Lucide UMD (icons) -->
+  <!-- Lucide (icons) -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+  <!-- jsPDF (PDF) -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+  <!-- JSZip (zip packaging) -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 </head>
 <body>
   <div id="root"></div>
 
-  <!-- IMPORTANT: add data-presets so JSX compiles -->
   <script type="text/babel" data-presets="env,react">
-    const { useState, useEffect, useRef } = React;
+    const {useState,useEffect,useRef} = React;
 
-    /* ============== Lucide (UMD) ============== */
-    const L = (window.lucide && window.lucide.icons) || {};
-    const Icons = {
-      Mic: L['mic'],
-      MicOff: L['mic-off'],
-      Upload: L['upload'],
-      Download: L['download'],
-      Edit2: L['edit-2'],
-      ChevronRight: L['chevron-right'],
-      FileText: L['file-text'],
-      Check: L['check'],
-      Keyboard: L['keyboard'],
-      HelpCircle: L['help-circle'],
-    };
-    const { Mic, MicOff, Upload, Download, Edit2, ChevronRight, FileText, Check, Keyboard, HelpCircle } = Icons;
-
-    // Safe: won't throw if an icon is missing
-    function Icon({ icon: IconDef, ...props }) {
-      if (!IconDef) return null;
-      return <span dangerouslySetInnerHTML={{ __html: IconDef.toSvg(props) }} />;
+    /* Error guard */
+    class ErrorBoundary extends React.Component {
+      constructor(p){ super(p); this.state={hasError:false, err:null}; }
+      static getDerivedStateFromError(error){ return {hasError:true, err:error}; }
+      componentDidCatch(error, info){ console.error('UI Error:', error, info); }
+      render(){
+        if(!this.state.hasError) return this.props.children;
+        return (
+          <div className="min-h-screen bg-red-50 flex items-center justify-center p-4">
+            <div className="bg-white border border-red-200 rounded-xl shadow p-6 max-w-xl w-full">
+              <h2 className="text-xl font-semibold text-red-700 mb-2">Something went wrong</h2>
+              <pre className="text-xs bg-red-50 border border-red-100 p-3 rounded overflow-auto">{String(this.state.err || '')}</pre>
+            </div>
+          </div>
+        );
+      }
     }
 
-    /* ============== Questions ============== */
+    /* Lucide UMD map */
+    const L = (window.lucide && window.lucide.icons) || {};
+    const Icons = {
+      Mic: L['mic'], MicOff: L['mic-off'], Upload: L['upload'], Download: L['download'],
+      Edit2: L['edit-2'], ChevronRight: L['chevron-right'], FileText: L['file-text'],
+      Check: L['check'], Keyboard: L['keyboard'], HelpCircle: L['help-circle'], List: L['list-ordered'],
+      Save: L['save'], RotateCcw: L['rotate-ccw'], FileUp: L['file-up'], Archive: L['archive']
+    };
+    function Icon({icon:IconDef, ...props}){ if(!IconDef) return null; try { return <span dangerouslySetInnerHTML={{__html: IconDef.toSvg(props)}}/>; } catch { return null; } }
+
+    /* Questions */
     const questions = [
-      { id: 'jobNumber', category: 'Basic Info', text: 'What is the job number?' },
-      { id: 'clientName', category: 'Basic Info', text: 'What is the client name?' },
-      { id: 'inHandDate', category: 'Timeline', text: 'What is the in-hand date?' },
-      { id: 'meetingDate', category: 'Timeline', text: 'What is the meeting or launch date, if applicable?' },
-      { id: 'productTypes', category: 'Product Overview', text: 'What product types are needed? Custom, ASI, Collection, or a mix?' },
-      { id: 'specifications', category: 'Product Overview', text: 'What are the sizes, materials, finishing, and quantities?' },
-      { id: 'productReferences', category: 'Product Overview', text: 'Do you have any product references, such as images, links, or prior projects?' },
-      { id: 'budget', category: 'Budget', text: "What is the client's budget or expected range?" },
-      { id: 'targetAudience', category: 'Target Audience', text: 'Who is receiving the product? Please describe age, gender, income, and region.' },
-      { id: 'audienceProfile', category: 'Target Audience', text: 'What are they like? For example, are they hard to impress, design-savvy, or traditional?' },
-      { id: 'desiredEmotion', category: 'Target Audience', text: 'What emotion or impression should this product create?' },
-      { id: 'projectPurpose', category: 'Purpose & Client Story', text: 'What is the purpose of the project? For example, is it for an event, internal use, thank-you gift, brand statement, or RFP?' },
-      { id: 'clientMessage', category: 'Purpose & Client Story', text: 'What message or story is the client trying to tell?' },
-      { id: 'backstory', category: 'Purpose & Client Story', text: "What's the backstory or urgency behind this request?" },
-      { id: 'painPoints', category: 'Purpose & Client Story', text: "What are the client's pain points?" },
-      { id: 'brandAssets', category: 'Design Direction', text: 'Do you have brand guidelines or logo vector files?' },
-      { id: 'moodBoard', category: 'Design Direction', text: 'Do you need a mood board? Any inspiration links or style references?' },
-      { id: 'colorPalette', category: 'Design Direction', text: 'What is the preferred color palette or Pantone references?' },
-      { id: 'logoPlacement', category: 'Design Direction', text: 'What are the logo usage and placement instructions?' },
-      { id: 'logoPreference', category: 'Design Direction', text: 'Should the logo be subtle and discreet, or obvious and front-and-center?' },
-      { id: 'flexibility', category: 'Design Direction', text: 'What is flexible versus fixed creatively?' },
-      { id: 'packaging', category: 'Packaging & Fulfillment', text: 'Are there special packaging needs, such as luxury box, retail-ready, or kitting?' },
-      { id: 'shipping', category: 'Packaging & Fulfillment', text: 'Is there multi-destination shipping or regional requirements?' },
-      { id: 'fulfillment', category: 'Packaging & Fulfillment', text: 'Will you handle fulfillment, or does the client have vendors?' },
-      { id: 'packingInstructions', category: 'Packaging & Fulfillment', text: 'Are there specific packing instructions, such as everything on a pallet or six items in one box?' },
-      { id: 'labelInstructions', category: 'Packaging & Fulfillment', text: 'Are there specific label instructions, for example for Europe or toys?' },
-      { id: 'agreements', category: 'Shipping & Compliance', text: 'Do you need to sign any agreement, such as an MSA or contract?' },
-      { id: 'shippingLocation', category: 'Shipping & Compliance', text: 'Is this domestic or international shipping?' },
-      { id: 'incoterm', category: 'Shipping & Compliance', text: 'What is the incoterm? FOB, DDP, or EXW?' },
-      { id: 'shippingType', category: 'Shipping & Compliance', text: 'What type of shipping is needed? By air or boat?' },
-      { id: 'qc', category: 'Shipping & Compliance', text: 'Do you need external QC, such as SGS? What level of QC is needed?' },
-      { id: 'routingGuides', category: 'Shipping & Compliance', text: 'Are there any routing guides or platforms, such as FedEx Freight, Ariba, or SAP?' },
-      { id: 'compliance', category: 'Shipping & Compliance', text: "Are there any compliance risks, such as food, pharma, children's items, or legal considerations?" },
-      { id: 'earlyInvolvement', category: 'Shipping & Compliance', text: 'Do you need early legal or production team involvement?' },
-      { id: 'decisionMaker', category: 'Decision Making', text: 'Is your contact the decision maker and the one approving invoices?' }
+      { id:'jobNumber', category:'Basic Info', text:'What is the job number?' },
+      { id:'clientName', category:'Basic Info', text:'What is the client name?' },
+      { id:'inHandDate', category:'Timeline', text:'What is the in-hand date?' },
+      { id:'meetingDate', category:'Timeline', text:'What is the meeting or launch date, if applicable?' },
+      { id:'productTypes', category:'Product Overview', text:'What product types are needed? Custom, ASI, Collection, or a mix?' },
+      { id:'specifications', category:'Product Overview', text:'What are the sizes, materials, finishing, and quantities?' },
+      { id:'productReferences', category:'Product Overview', text:'Do you have any product references, such as images, links, or prior projects?' },
+      { id:'budget', category:'Budget', text:"What is the client's budget or expected range?" },
+      { id:'targetAudience', category:'Target Audience', text:'Who is receiving the product? Please describe age, gender, income, and region.' },
+      { id:'audienceProfile', category:'Target Audience', text:'What are they like? For example, are they hard to impress, design-savvy, or traditional?' },
+      { id:'desiredEmotion', category:'Target Audience', text:'What emotion or impression should this product create?' },
+      { id:'projectPurpose', category:'Purpose & Client Story', text:'What is the purpose of the project? For example, is it for an event, internal use, thank-you gift, brand statement, or RFP?' },
+      { id:'clientMessage', category:'Purpose & Client Story', text:'What message or story is the client trying to tell?' },
+      { id:'backstory', category:'Purpose & Client Story', text:"What's the backstory or urgency behind this request?" },
+      { id:'painPoints', category:'Purpose & Client Story', text:"What are the client's pain points?" },
+      { id:'brandAssets', category:'Design Direction', text:'Do you have brand guidelines or logo vector files?' },
+      { id:'moodBoard', category:'Design Direction', text:'Do you need a mood board? Any inspiration links or style references?' },
+      { id:'colorPalette', category:'Design Direction', text:'What is the preferred color palette or Pantone references?' },
+      { id:'logoPlacement', category:'Design Direction', text:'What are the logo usage and placement instructions?' },
+      { id:'logoPreference', category:'Design Direction', text:'Should the logo be subtle and discreet, or obvious and front-and-center?' },
+      { id:'flexibility', category:'Design Direction', text:'What is flexible versus fixed creatively?' },
+      { id:'packaging', category:'Packaging & Fulfillment', text:'Are there special packaging needs, such as luxury box, retail-ready, or kitting?' },
+      { id:'shipping', category:'Packaging & Fulfillment', text:'Is there multi-destination shipping or regional requirements?' },
+      { id:'fulfillment', category:'Packaging & Fulfillment', text:'Will you handle fulfillment, or does the client have vendors?' },
+      { id:'packingInstructions', category:'Packaging & Fulfillment', text:'Are there specific packing instructions, such as everything on a pallet or six items in one box?' },
+      { id:'labelInstructions', category:'Packaging & Fulfillment', text:'Are there specific label instructions, for example for Europe or toys?' },
+      { id:'agreements', category:'Shipping & Compliance', text:'Do you need to sign any agreement, such as an MSA or contract?' },
+      { id:'shippingLocation', category:'Shipping & Compliance', text:'Is this domestic or international shipping?' },
+      { id:'incoterm', category:'Shipping & Compliance', text:'What is the incoterm? FOB, DDP, or EXW?' },
+      { id:'shippingType', category:'Shipping & Compliance', text:'What type of shipping is needed? By air or boat?' },
+      { id:'qc', category:'Shipping & Compliance', text:'Do you need external QC, such as SGS? What level of QC is needed?' },
+      { id:'routingGuides', category:'Shipping & Compliance', text:'Are there any routing guides or platforms, such as FedEx Freight, Ariba, or SAP?' },
+      { id:'compliance', category:'Shipping & Compliance', text:"Are there any compliance risks, such as food, pharma, children's items, or legal considerations?" },
+      { id:'earlyInvolvement', category:'Shipping & Compliance', text:'Do you need early legal or production team involvement?' },
+      { id:'decisionMaker', category:'Decision Making', text:'Is your contact the decision maker and the one approving invoices?' }
     ];
 
-    /* ============== App ============== */
-    function App() {
-      const [started, setStarted] = useState(false);
-      const [showHelp, setShowHelp] = useState(false);
-      const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-      const [answers, setAnswers] = useState({});
-      const [isListening, setIsListening] = useState(false);
-      const [transcript, setTranscript] = useState('');
-      const [uploadedFiles, setUploadedFiles] = useState([]);
-      const [completed, setCompleted] = useState(false);
-      const [inputMode, setInputMode] = useState('voice');
-      const [speechSupported, setSpeechSupported] = useState(false);
+    /* Text cleanup + style transforms (local, deterministic) */
+    const fillerRE = /\b(um+|uh+|erm+|like,?|you know,?)\b/gi;
+    const multiSpaceRE = /\s{2,}/g;
+    // Match sequences like B O U L U D / B-O-U-L-U-D / B, O, U...
+    const spelledSeqRE = /(?:[,;:\-–—]\s*)?(?:\b([A-Za-z])\b[\s,\-]*){2,}(?=$|\.)/g;
 
-      const recognitionRef = useRef(null);
-      const lastAdvanceRef = useRef(0);
+    function stripSpelledOutTrailing(text){
+      // Remove trailing spelled-out sequences after a name: "Daniel Boulud, B-O-U-L-U-D" -> "Daniel Boulud"
+      return text.replace(/([A-Za-z][A-Za-z'’\-]+\s+[A-Za-z][A-Za-z'’\-]+)\s*,?\s*(?:\b([A-Za-z])\b[\s,\-]*){2,}(\.)?/g, '$1$3');
+    }
+    function cleanTranscript(s){
+      if(!s) return s;
+      let t = s;
+      t = stripSpelledOutTrailing(t);
+      t = t.replace(fillerRE,'').replace(multiSpaceRE,' ').trim();
+      return t;
+    }
+    function conciseStyle(s){
+      if(!s) return s;
+      // Split into clauses, remove redundancies, tighten punctuation
+      return cleanTranscript(s)
+        .replace(/\b(I think|we believe|sort of|kind of|basically|actually)\b/gi,'')
+        .replace(/\s{2,}/g,' ')
+        .replace(/\s*,\s*/g, ', ')
+        .replace(/\s*\.\s*/g, '. ')
+        .replace(/,\s*and\b/gi, ' and')
+        .trim();
+    }
+    function ogilvyStyle(s){
+      // Crisp, declarative, benefits-forward. Deterministic.
+      const base = conciseStyle(s);
+      if(!base) return base;
+      let out = base;
+      // Capitalize first letter of sentences
+      out = out.replace(/(^|[.!?]\s+)([a-z])/g, (m,p,chr)=>p+chr.toUpperCase());
+      // Shorten rambling with em dashes where helpful
+      out = out.replace(/\b(so|then|and then)\b/gi,'—').replace(/\s—\s/g,' — ');
+      return out;
+    }
+    async function rewriteLocal(text, mode){
+      if(mode==='concise') return conciseStyle(text);
+      if(mode==='ogilvy') return ogilvyStyle(text);
+      return cleanTranscript(text);
+    }
 
-      useEffect(() => {
-        const isSupported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+    // Optional server-side AI rewrite (requires your endpoint)
+    async function rewriteWithAI(text, mode){
+      // Replace URL with your serverless function; keep key on the server.
+      // return fetch('https://YOUR-ENDPOINT.example/rewrite',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,mode})}).then(r=>r.json()).then(j=>j.text);
+      return rewriteLocal(text, mode); // safe fallback
+    }
+
+    /* App */
+    function App(){
+      const [started,setStarted]=useState(false);
+      const [showHelp,setShowHelp]=useState(false);
+      const [currentQuestionIndex,setCurrentQuestionIndex]=useState(0);
+      const [answers,setAnswers]=useState({});
+      const [isListening,setIsListening]=useState(false);
+      const [transcript,setTranscript]=useState('');
+      const [uploadedFiles,setUploadedFiles]=useState([]); // File[]
+      const [completed,setCompleted]=useState(false);
+      const [inputMode,setInputMode]=useState('voice');
+      const [speechSupported,setSpeechSupported]=useState(false);
+      const [style,setStyle]=useState('ogilvy'); // 'raw'|'concise'|'ogilvy'
+      const [jumpTo,setJumpTo]=useState('');
+
+      const recognitionRef=useRef(null);
+      const lastAdvanceRef=useRef(0);
+      const lastResultAtRef=useRef(Date.now());
+
+      /* Speech setup with auto-restart */
+      useEffect(()=>{
+        const isSupported='webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
         setSpeechSupported(isSupported);
-
-        if (isSupported) {
-          const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-          const rec = new SpeechRecognition();
-          rec.continuous = true;
-          rec.interimResults = true;
-
-          rec.onstart = () => setIsListening(true);
-
-          rec.onresult = (event) => {
-            let final = '';
-            for (let i = event.resultIndex; i < event.results.length; i++) {
-              if (event.results[i].isFinal) final += event.results[i][0].transcript + ' ';
+        if(isSupported){
+          const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+          const rec=new SR();
+          rec.continuous=true; rec.interimResults=true;
+          rec.onstart=()=>setIsListening(true);
+          rec.onresult=(ev)=>{
+            lastResultAtRef.current=Date.now();
+            let final='';
+            for(let i=ev.resultIndex;i<ev.results.length;i++){
+              if(ev.results[i].isFinal) final+=ev.results[i][0].transcript+' ';
             }
-            if (final) {
-              setTranscript(prev => (prev + ' ' + final).trim());
-              checkForAdvanceCommand(final);
+            if(final){
+              const cleaned=cleanTranscript(final);
+              setTranscript(prev=>(prev+' '+cleaned).trim());
+              checkForAdvanceCommand(cleaned);
             }
           };
-
-          rec.onerror = () => setIsListening(false);
-          rec.onend = () => setIsListening(false);
-          recognitionRef.current = rec;
+          rec.onerror=()=>{ setIsListening(false); if(started && !completed && inputMode==='voice') setTimeout(tryStart,700); };
+          rec.onend=()=>{ setIsListening(false); if(started && !completed && inputMode==='voice') setTimeout(tryStart,500); };
+          recognitionRef.current=rec;
         }
+        return ()=>{ if(recognitionRef.current){ try{recognitionRef.current.stop();}catch{} } };
+      },[started,completed,inputMode]);
 
-        return () => { if (recognitionRef.current) recognitionRef.current.stop(); };
-      }, []);
+      useEffect(()=>{
+        const id=setInterval(()=>{
+          if(!speechSupported) return;
+          if(!started || completed || inputMode!=='voice') return;
+          if(!isListening && (Date.now()-lastResultAtRef.current>3000)) tryStart();
+        },2000);
+        return ()=>clearInterval(id);
+      },[started,completed,inputMode,isListening,speechSupported]);
 
-      // Voice command → Next (regex + debounce)
-      const checkForAdvanceCommand = (text) => {
-        const advanceRE = /\b(next(?:\s*question)?|continue|move on|skip)\b/i;
-        if (advanceRE.test(text)) {
-          const now = Date.now();
-          if (now - lastAdvanceRef.current > 800) {
-            lastAdvanceRef.current = now;
-            setTimeout(() => handleNext(), 400);
-          }
+      const tryStart=()=>{ const rec=recognitionRef.current; if(rec && !isListening){ try{rec.start();}catch{} } };
+      const startListening=()=>{ if(inputMode==='voice' && speechSupported) tryStart(); };
+      const stopListening=()=>{ const rec=recognitionRef.current; if(rec && isListening){ try{rec.stop();}catch{} } };
+
+      /* Voice “next” command */
+      const checkForAdvanceCommand=(text)=>{
+        const re=/\b(next(?:\s*question)?|continue|move on|skip)\b/i;
+        if(re.test(text)){ const now=Date.now(); if(now-lastAdvanceRef.current>800){ lastAdvanceRef.current=now; setTimeout(()=>handleNext(),400); } }
+      };
+
+      /* Jump to number */
+      const goToQuestion=()=>{
+        const n=parseInt(jumpTo,10);
+        if(Number.isFinite(n) && n>=1 && n<=questions.length){
+          setCurrentQuestionIndex(n-1);
+          setTranscript(answers[questions[n-1].id]||'');
+          window.scrollTo({top:0,behavior:'smooth'});
+          if(inputMode==='voice' && speechSupported){ stopListening(); setTimeout(startListening,300); }
         }
       };
 
-      const startListening = () => {
-        const rec = recognitionRef.current;
-        if (rec && !isListening) { try { rec.start(); } catch {} }
-      };
+      const handleStart=()=>{ setStarted(true); if(speechSupported && inputMode==='voice') setTimeout(startListening,500); window.scrollTo({top:0,behavior:'smooth'}); };
 
-      const stopListening = () => {
-        const rec = recognitionRef.current;
-        if (rec && isListening) rec.stop();
-      };
-
-      const handleStart = () => {
-        setStarted(true);
-        if (speechSupported && inputMode === 'voice') setTimeout(startListening, 500);
-      };
-
-      const handleNext = () => {
-        const currentAnswer = transcript.trim();
-        if (currentAnswer) {
-          const currentQuestion = questions[currentQuestionIndex];
-          setAnswers(prev => ({ ...prev, [currentQuestion.id]: currentAnswer }));
+      const handleNext=async ()=>{
+        const currentAnswer=(await rewriteWithAI(transcript.trim(), style))||'';
+        if(currentAnswer){
+          const q=questions[currentQuestionIndex];
+          setAnswers(prev=>({...prev,[q.id]:currentAnswer}));
         }
-
-        if (currentQuestionIndex < questions.length - 1) {
-          setCurrentQuestionIndex(i => i + 1);
+        if(currentQuestionIndex < questions.length-1){
+          setCurrentQuestionIndex(i=>i+1);
           setTranscript('');
-          if (inputMode === 'voice' && isListening) {
-            stopListening();
-            setTimeout(startListening, 300);
-          }
-        } else {
-          stopListening();
-          setCompleted(true);
+          window.scrollTo({top:0,behavior:'smooth'});
+          if(inputMode==='voice'){ stopListening(); setTimeout(startListening,300); }
+        }else{
+          stopListening(); setCompleted(true); window.scrollTo({top:0,behavior:'smooth'});
         }
       };
 
-      const handleSkip = () => {
-        if (currentQuestionIndex < questions.length - 1) {
-          setCurrentQuestionIndex(i => i + 1);
-          setTranscript('');
-          if (inputMode === 'voice' && isListening) {
-            stopListening();
-            setTimeout(startListening, 300);
-          }
-        } else {
-          stopListening();
-          setCompleted(true);
-        }
+      const handleSkip=()=>{ if(currentQuestionIndex<questions.length-1){ setCurrentQuestionIndex(i=>i+1); setTranscript(''); if(inputMode==='voice'){ stopListening(); setTimeout(startListening,300); } } else { stopListening(); setCompleted(true); } };
+
+      const handleEditQuestion=(qid)=>{ const idx=questions.findIndex(q=>q.id===qid); if(idx<0)return; setCurrentQuestionIndex(idx); setTranscript(answers[qid]||''); setCompleted(false); window.scrollTo({top:0,behavior:'smooth'}); if(inputMode==='voice'&&speechSupported){ setTimeout(startListening,300); } };
+
+      /* Export: JSON (state) */
+      const downloadJSON=()=>{
+        const payload={ version:1, timestamp:Date.now(), answers, uploadedNames:(uploadedFiles||[]).map(f=>f.name) };
+        const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+        saveAs(blob, `brief-${answers.jobNumber||'session'}.json`);
       };
 
-      const handleFileUpload = (e) => {
-        const files = Array.from(e.target.files);
-        setUploadedFiles(prev => [...prev, ...files]);
-      };
-
-      const handleEditQuestion = (questionId) => {
-        const index = questions.findIndex(q => q.id === questionId);
-        setCurrentQuestionIndex(index);
-        setTranscript(answers[questionId] || '');
-        setCompleted(false);
-        if (inputMode === 'voice' && speechSupported) setTimeout(startListening, 300);
-      };
-
-      const generateBrief = () => {
-        let content = 'PROJECT BRIEF CHECKLIST\n' + '='.repeat(50) + '\n\n';
-        let lastCategory = '';
-        questions.forEach(q => {
-          if (q.category !== lastCategory) {
-            content += `\n${'='.repeat(50)}\n${q.category.toUpperCase()}\n${'='.repeat(50)}\n\n`;
-            lastCategory = q.category;
-          }
-          const answer = answers[q.id] || 'Not answered';
-          content += `Q: ${q.text}\nA: ${answer}\n\n`;
+      /* Export: PDF (embeds JSON for re-import) */
+      const makePDF=()=>{
+        const { jsPDF } = window.jspdf || {};
+        if(!jsPDF){ alert('PDF library not loaded.'); return null; }
+        const doc=new jsPDF({unit:'pt',format:'letter'});
+        const margin=48, width=612-2*margin;
+        let y=margin;
+        const addLine=(txt)=>{ const lines=doc.splitTextToSize(txt,width); lines.forEach(line=>{ if(y>750){ doc.addPage(); y=margin; } doc.text(line,margin,y); y+=18; }); };
+        doc.setFont('Helvetica','bold'); doc.setFontSize(16);
+        addLine('Project Brief');
+        doc.setFont('Helvetica','normal'); doc.setFontSize(11); y+=8;
+        let lastCat='';
+        questions.forEach((q,i)=>{
+          if(q.category!==lastCat){ y+=8; doc.setFont('Helvetica','bold'); addLine(q.category.toUpperCase()); doc.setFont('Helvetica','normal'); lastCat=q.category; }
+          addLine(`${i+1}. ${q.text}`);
+          addLine(`→ ${answers[q.id] || 'Not answered'}`); y+=6;
         });
+        if((uploadedFiles||[]).length){ y+=8; doc.setFont('Helvetica','bold'); addLine('ATTACHED FILES'); doc.setFont('Helvetica','normal'); uploadedFiles.forEach(f=>addLine(`- ${f.name}`)); }
+        // Embed JSON as metadata for re-import
+        const payload={version:1,answers};
+        try{ doc.setProperties({ title:`Brief ${answers.jobNumber||''}` , subject: JSON.stringify(payload)}); }catch{}
+        return doc;
+      };
+      const downloadPDF=()=>{
+        const doc=makePDF(); if(!doc) return;
+        doc.save(`brief-${answers.jobNumber||'session'}.pdf`);
+      };
 
-        if (uploadedFiles.length > 0) {
-          content += '\n' + '='.repeat(50) + '\nATTACHED FILES\n' + '='.repeat(50) + '\n';
-          uploadedFiles.forEach(file => { content += `- ${file.name}\n`; });
+      /* Import: JSON or our own PDF with embedded JSON */
+      const loadSession=(e)=>{
+        const file=(e.target && e.target.files && e.target.files[0])||null; if(!file) return;
+        const name=(file.name||'').toLowerCase();
+        if(name.endsWith('.json')){
+          const r=new FileReader();
+          r.onload=(ev)=>{ try{ const data=JSON.parse(String(ev.target.result||'{}')); if(data && data.answers){ setAnswers(data.answers); setStarted(true);} }catch{ alert('Bad JSON'); } };
+          r.readAsText(file);
+        }else if(name.endsWith('.pdf')){
+          // We cannot reliably parse arbitrary PDFs. We only support PDFs we generated (JSON in metadata).
+          // jsPDF cannot read; browser cannot read metadata cross-PDF. So we attempt a naive text read as fallback.
+          const r=new FileReader();
+          r.onload=()=>{ alert('If this PDF was generated by this tool, re-open the original JSON; PDF re-import is limited in-browser.'); };
+          r.readAsArrayBuffer(file);
+        }else{
+          alert('Use the JSON you downloaded from this tool, or a PDF generated here (limited re-import).');
         }
-
-        const blob = new Blob([content], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `brief-${answers.jobNumber || 'checklist'}-${Date.now()}.txt`;
-        a.click();
-        URL.revokeObjectURL(url);
       };
 
-      const loadExistingBrief = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const content = event.target.result;
-          const parsed = {};
-          questions.forEach(q => {
-            const regex = new RegExp(`Q: ${q.text.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\nA: ([^\\n]+(?:\\n(?!Q:)[^\\n]+)*)`, 'g');
-            const match = regex.exec(content);
-            if (match && match[1] && match[1] !== 'Not answered') parsed[q.id] = match[1].trim();
-          });
-          setAnswers(parsed);
-          setStarted(true);
-        };
-        reader.readAsText(file);
+      /* Zip: PDF + uploads */
+      const downloadZip=async ()=>{
+        const zip=new JSZip();
+        // Add PDF
+        const doc=makePDF(); if(doc){ const pdfBlob=doc.output('blob'); zip.file(`brief-${answers.jobNumber||'session'}.pdf`, pdfBlob); }
+        // Add uploads
+        for(const f of (uploadedFiles||[])){ const buf=await f.arrayBuffer(); zip.file(`assets/${f.name}`, buf); }
+        const out=await zip.generateAsync({type:'blob'});
+        saveAs(out, `brief-package-${answers.jobNumber||'session'}.zip`);
       };
 
-      /* ============== Screens ============== */
-      if (!started) {
+      /* Upload handlers */
+      const onUploadFiles=(e)=>{ const files=Array.from(e.target.files||[]); if(!files.length) return; setUploadedFiles(prev=>[...prev,...files]); };
+
+      /* UI */
+      if(!started){
         return (
           <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl p-12 max-w-3xl w-full">
+            <div className="bg-white rounded-2xl shadow-2xl p-8 md:p-12 max-w-3xl w-full">
               <div className="text-center mb-8">
-                <Icon icon={FileText} className="w-20 h-20 text-indigo-600 mx-auto mb-6" />
-                <h1 className="text-4xl font-bold text-gray-900 mb-3">Project Brief Assistant</h1>
-                <p className="text-lg text-gray-600">A fast, guided intake. Speak or type. Export a clean brief in minutes.</p>
+                <Icon icon={Icons.FileText} className="w-16 h-16 text-indigo-600 mx-auto mb-5"/>
+                <h1 className="text-4xl font-bold text-gray-900 mb-2">Project Brief Assistant</h1>
+                <p className="text-lg text-gray-600">Ask smart questions. Capture clean answers. Export beautifully.</p>
               </div>
 
-              <!-- Ogilvy-style instructions -->
-              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-6 mb-8">
-                <h2 className="text-xl font-semibold text-gray-900 mb-3">How it works</h2>
+              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-6 mb-6">
+                <h2 className="text-xl font-semibold mb-3">How it works</h2>
                 <ol className="list-decimal list-inside space-y-2 text-gray-700">
-                  <li><strong>Press “Start Interview.”</strong> Choose Voice or Text.</li>
-                  <li><strong>Answer each question.</strong> Keep it crisp; we capture everything.</li>
-                  <li><strong>Advance hands-free.</strong> Say “next,” “continue,” or “skip.”</li>
-                  <li><strong>Add files.</strong> Upload artwork and brand guidelines at the end.</li>
-                  <li><strong>Download.</strong> Get a clean, structured brief for the team.</li>
+                  <li><strong>Start Interview.</strong> Pick Voice or Text.</li>
+                  <li><strong>Answer.</strong> Keep it crisp—we do the cleanup.</li>
+                  <li><strong>Hands-free.</strong> Say “next,” “continue,” or “skip.”</li>
+                  <li><strong>Add brand files.</strong> Logos, guidelines, references.</li>
+                  <li><strong>Export.</strong> PDF, JSON for edits, or a full ZIP.</li>
                 </ol>
-                <p className="text-sm text-gray-600 mt-3">Tip: For voice, use Chrome, Edge, or Safari. A quiet room helps.</p>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <label className="inline-flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg cursor-pointer hover:bg-gray-200">
+                    <Icon icon={Icons.FileUp} className="w-4 h-4"/> Load previous (JSON/PDF*)
+                    <input type="file" accept=".json,.pdf" onChange={loadSession} className="hidden"/>
+                  </label>
+                  <span className="text-xs text-gray-500">*PDF re-import works only for PDFs generated here (metadata embedded).</span>
+                </div>
               </div>
 
               {!speechSupported && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-                  <p className="text-sm text-yellow-800">Voice recognition requires Chrome, Edge, or Safari. Text mode will be used.</p>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-sm text-yellow-800">
+                  Voice recognition needs Chrome, Edge, or Safari. Text mode will be used.
                 </div>
               )}
 
-              {speechSupported && (
-                <div className="flex gap-4 justify-center mb-8">
-                  <button onClick={() => setInputMode('voice')}
-                    className={`px-6 py-3 rounded-lg font-semibold transition-all flex items-center gap-2 ${inputMode === 'voice' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                    <Icon icon={Mic} className="w-5 h-5" /> Voice Mode
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex gap-2">
+                  <button onClick={()=>setInputMode('voice')}
+                          className={`px-4 py-2 rounded-lg font-semibold flex items-center gap-2 ${inputMode==='voice'?'bg-indigo-600 text-white':'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
+                    <Icon icon={Icons.Mic} className="w-4 h-4"/> Voice
                   </button>
-                  <button onClick={() => setInputMode('text')}
-                    className={`px-6 py-3 rounded-lg font-semibold transition-all flex items-center gap-2 ${inputMode === 'text' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                    <Icon icon={Keyboard} className="w-5 h-5" /> Text Mode
+                  <button onClick={()=>setInputMode('text')}
+                          className={`px-4 py-2 rounded-lg font-semibold flex items-center gap-2 ${inputMode==='text'?'bg-indigo-600 text-white':'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
+                    <Icon icon={Icons.Keyboard} className="w-4 h-4"/> Text
                   </button>
                 </div>
-              )}
-
-              <div className="flex items-center justify-center gap-3">
-                <button onClick={handleStart}
-                  className="bg-indigo-600 text-white px-10 py-4 rounded-xl text-xl font-semibold hover:bg-indigo-700 transition-all transform hover:scale-105 shadow-lg">
-                  Start Interview
-                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">Style</span>
+                  <select value={style} onChange={e=>setStyle(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
+                    <option value="raw">Raw</option>
+                    <option value="concise">Concise</option>
+                    <option value="ogilvy">Ogilvy-ish</option>
+                  </select>
+                </div>
               </div>
 
-              <div className="pt-8 border-t border-gray-200 mt-8 text-center">
-                <p className="text-sm text-gray-600 mb-4">Or load an existing brief to edit</p>
-                <label className="inline-flex items-center gap-2 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg cursor-pointer hover:bg-gray-200 transition-all">
-                  <Icon icon={Upload} className="w-5 h-5" />
-                  Load Existing Brief
-                  <input type="file" accept=".txt" onChange={loadExistingBrief} className="hidden" />
-                </label>
+              <div className="flex items-center justify-center">
+                <button onClick={handleStart}
+                        className="bg-indigo-600 text-white px-8 py-3 rounded-xl text-lg font-semibold hover:bg-indigo-700 transition shadow">
+                  Start Interview
+                </button>
               </div>
             </div>
           </div>
         );
       }
 
-      if (completed) {
-        const answeredCount = Object.keys(answers).length;
-        const unansweredQuestions = questions.filter(q => !answers[q.id]);
+      if(completed){
+        const answeredCount=Object.keys(answers).length;
+        const unanswered=questions.filter(q=>!answers[q.id]);
         return (
           <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 p-4">
-            <div className="max-w-4xl mx-auto">
+            <div className="max-w-5xl mx-auto">
               <div className="bg-white rounded-2xl shadow-2xl p-8 mb-6">
                 <div className="text-center mb-8">
-                  <Icon icon={Check} className="w-16 h-16 text-green-600 mx-auto mb-4" />
-                  <h2 className="text-3xl font-bold text-gray-900 mb-2">Interview Complete</h2>
+                  <Icon icon={Icons.Check} className="w-14 h-14 text-green-600 mx-auto mb-3"/>
+                  <h2 className="text-3xl font-bold">Interview Complete</h2>
                   <p className="text-gray-600">You answered {answeredCount} of {questions.length} questions.</p>
                 </div>
 
-                <div className="space-y-6 mb-8">
-                  <div>
-                    <h3 className="text-xl font-semibold mb-4">Upload Artwork & Brand Guidelines</h3>
-                    <label className="flex items-center justify-center gap-3 p-6 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 transition-all">
-                      <Icon icon={Upload} className="w-6 h-6 text-indigo-600" />
+                <div className="grid md:grid-cols-3 gap-6 mb-8">
+                  <div className="md:col-span-2">
+                    <h3 className="text-lg font-semibold mb-3">Upload Artwork & Brand Guidelines</h3>
+                    <label className="flex items-center justify-center gap-3 p-6 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-indigo-500 hover:bg-indigo-50">
+                      <Icon icon={Icons.Upload} className="w-5 h-5 text-indigo-600"/>
                       <span className="text-gray-700">Upload Files</span>
-                      <input type="file" multiple onChange={handleFileUpload} className="hidden" />
+                      <input type="file" multiple onChange={onUploadFiles} className="hidden"/>
                     </label>
-                    {uploadedFiles.length > 0 && (
-                      <div className="mt-4 space-y-2">
-                        {uploadedFiles.map((file, idx) => (
-                          <div key={idx} className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 p-2 rounded">
-                            <Icon icon={FileText} className="w-4 h-4" /> {file.name}
+                    {(uploadedFiles||[]).length>0 && (
+                      <div className="mt-3 grid sm:grid-cols-2 gap-2">
+                        {uploadedFiles.map((f,i)=>(
+                          <div key={i} className="text-sm text-gray-700 bg-gray-50 border rounded p-2 flex items-center gap-2">
+                            <Icon icon={Icons.FileText} className="w-4 h-4"/>{f.name}
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
-
-                  <button onClick={generateBrief}
-                    className="w-full bg-green-600 text-white py-4 rounded-xl font-semibold hover:bg-green-700 transition-all flex items-center justify-center gap-3">
-                    <Icon icon={Download} className="w-5 h-5" /> Download Brief
-                  </button>
+                  <div className="space-y-3">
+                    <button onClick={downloadPDF} className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 flex items-center justify-center gap-2">
+                      <Icon icon={Icons.Download} className="w-5 h-5"/> Download PDF
+                    </button>
+                    <button onClick={downloadJSON} className="w-full bg-gray-800 text-white py-3 rounded-lg font-semibold hover:bg-black flex items-center justify-center gap-2">
+                      <Icon icon={Icons.Save} className="w-5 h-5"/> Download JSON (editable)
+                    </button>
+                    <button onClick={downloadZip} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 flex items-center justify-center gap-2">
+                      <Icon icon={Icons.Archive} className="w-5 h-5"/> Download ZIP (PDF + assets)
+                    </button>
+                  </div>
                 </div>
 
-                {unansweredQuestions.length > 0 && (
-                  <div className="border-t border-gray-200 pt-6">
-                    <h3 className="text-lg font-semibold mb-4">Unanswered Questions ({unansweredQuestions.length})</h3>
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
-                      {unansweredQuestions.map(q => (
-                        <button key={q.id} onClick={() => handleEditQuestion(q.id)}
-                          className="w-full text-left p-3 bg-yellow-50 border border-yellow-200 rounded-lg hover:bg-yellow-100 transition-all flex items-center justify-between">
+                {unanswered.length>0 && (
+                  <div className="border-t pt-6">
+                    <h3 className="text-lg font-semibold mb-3">Unanswered ({unanswered.length})</h3>
+                    <div className="grid md:grid-cols-2 gap-2">
+                      {unanswered.map(q=>(
+                        <button key={q.id} onClick={()=>handleEditQuestion(q.id)}
+                                className="text-left p-3 bg-yellow-50 border border-yellow-200 rounded-lg hover:bg-yellow-100 flex items-center justify-between">
                           <div>
                             <div className="text-xs text-yellow-700 font-medium">{q.category}</div>
-                            <div className="text-sm text-gray-700">{q.text}</div>
+                            <div className="text-sm text-gray-800">{q.text}</div>
                           </div>
-                          <Icon icon={Edit2} className="w-4 h-4 text-yellow-600" />
+                          <Icon icon={Icons.Edit2} className="w-4 h-4 text-yellow-600"/>
                         </button>
                       ))}
                     </div>
                   </div>
                 )}
 
-                <div className="border-t border-gray-200 pt-6 mt-6">
-                  <h3 className="text-lg font-semibold mb-4">Review & Edit Answers</h3>
+                <div className="border-t pt-6 mt-6">
+                  <h3 className="text-lg font-semibold mb-3">Review & Edit Answers</h3>
                   <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {questions.map(q => answers[q.id] && (
-                      <button key={q.id} onClick={() => handleEditQuestion(q.id)}
-                        className="w-full text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-all">
+                    {questions.map((q,idx)=>answers[q.id] && (
+                      <button key={q.id} onClick={()=>handleEditQuestion(q.id)}
+                              className="w-full text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100">
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1">
-                            <div className="text-xs text-indigo-600 font-medium mb-1">{q.category}</div>
-                            <div className="text-sm text-gray-700 font-medium mb-1">{q.text}</div>
-                            <div className="text-sm text-gray-600">{answers[q.id]}</div>
+                            <div className="text-xs text-indigo-600 font-medium mb-1">Q{idx+1} · {q.category}</div>
+                            <div className="text-sm font-medium text-gray-900 mb-1">{q.text}</div>
+                            <div className="text-sm text-gray-700 whitespace-pre-wrap">{answers[q.id]}</div>
                           </div>
-                          <Icon icon={Edit2} className="w-4 h-4 text-gray-400" />
+                          <Icon icon={Icons.Edit2} className="w-4 h-4 text-gray-400"/>
                         </div>
                       </button>
                     ))}
@@ -398,53 +471,66 @@
         );
       }
 
-      const currentQuestion = questions[currentQuestionIndex];
-      const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
+      /* Interview screen */
+      const current=questions[currentQuestionIndex];
+      const progress=((currentQuestionIndex+1)/questions.length)*100;
 
       return (
         <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-100 p-4">
-          <div className="max-w-4xl mx-auto">
-            <div className="mb-6">
-              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div className="h-full bg-indigo-600 transition-all duration-300" style={{ width: `${progress}%` }} />
+          <div className="max-w-5xl mx-auto">
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <div className="flex gap-2">
+                <button onClick={()=>setInputMode('voice')}
+                        className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 ${inputMode==='voice'?'bg-indigo-600 text-white':'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
+                  <Icon icon={Icons.Mic} className="w-4 h-4"/> Voice
+                </button>
+                <button onClick={()=>setInputMode('text')}
+                        className={`px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 ${inputMode==='text'?'bg-indigo-600 text-white':'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
+                  <Icon icon={Icons.Keyboard} className="w-4 h-4"/> Text
+                </button>
               </div>
-              <div className="flex justify-between text-sm text-gray-600 mt-2">
-                <span>Question {currentQuestionIndex + 1} of {questions.length}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Style</span>
+                <select value={style} onChange={e=>setStyle(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm">
+                  <option value="raw">Raw</option>
+                  <option value="concise">Concise</option>
+                  <option value="ogilvy">Ogilvy-ish</option>
+                </select>
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <input value={jumpTo} onChange={e=>setJumpTo(e.target.value)} placeholder="Go to #"
+                       className="w-24 border rounded-lg px-3 py-1.5 text-sm" />
+                <button onClick={goToQuestion} className="px-3 py-1.5 rounded-lg bg-gray-800 text-white text-sm hover:bg-black flex items-center gap-2">
+                  <Icon icon={Icons.List} className="w-4 h-4"/> Jump
+                </button>
+                <label className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-sm cursor-pointer hover:bg-gray-200 flex items-center gap-2">
+                  <Icon icon={Icons.RotateCcw} className="w-4 h-4"/> Load
+                  <input type="file" accept=".json,.pdf" onChange={loadSession} className="hidden"/>
+                </label>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-full bg-indigo-600 transition-all duration-300" style={{width:`${progress}%`}}/>
+              </div>
+              <div className="flex justify-between text-sm text-gray-600 mt-1">
+                <span>Question {currentQuestionIndex+1} of {questions.length}</span>
                 <span>{Math.round(progress)}% Complete</span>
               </div>
             </div>
 
             <div className="bg-white rounded-2xl shadow-2xl p-8 mb-6">
               <div className="mb-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="text-sm font-medium text-indigo-600 mb-2">{currentQuestion.category}</div>
-                    <h2 className="text-2xl font-bold text-gray-900">{currentQuestion.text}</h2>
-                  </div>
-                  <button className="text-gray-400 hover:text-indigo-600 text-sm flex items-center gap-2"
-                          onClick={() => setShowHelp(v => !v)}
-                          title="How it works">
-                    <Icon icon={HelpCircle} className="w-5 h-5" />
-                    How it works
-                  </button>
-                </div>
+                <div className="text-sm font-medium text-indigo-600 mb-1">{current.category}</div>
+                <h2 className="text-2xl font-bold text-gray-900">{current.text}</h2>
               </div>
 
-              {showHelp && (
-                <div className="mb-6 bg-indigo-50 border border-indigo-100 rounded-lg p-4 text-sm text-gray-700">
-                  Say <strong>“next”</strong>, <strong>“continue”</strong>, or <strong>“skip”</strong> to move ahead.
-                  Use the mic button to start/stop listening. You can always switch to Text mode.
-                </div>
-              )}
-
               <div className="mb-6">
-                {(inputMode === 'text' || !speechSupported) ? (
-                  <textarea
-                    value={transcript}
-                    onChange={(e) => setTranscript(e.target.value)}
-                    className="w-full h-32 p-4 border-2 border-gray-300 rounded-xl focus:border-indigo-500 focus:outline-none resize-none"
-                    placeholder="Type your answer here..."
-                  />
+                {(inputMode==='text' || !speechSupported) ? (
+                  <textarea value={transcript} onChange={e=>setTranscript(e.target.value)}
+                            className="w-full h-32 p-4 border-2 border-gray-300 rounded-xl focus:border-indigo-500 focus:outline-none resize-none"
+                            placeholder="Type your answer here..."/>
                 ) : (
                   <div className="bg-gray-50 rounded-xl p-6 min-h-32 border-2 border-dashed border-gray-300">
                     <p className="text-gray-700 whitespace-pre-wrap">
@@ -454,11 +540,11 @@
                 )}
               </div>
 
-              {inputMode === 'voice' && speechSupported && (
+              {(inputMode==='voice' && speechSupported) && (
                 <div className="flex gap-4 mb-4">
-                  <button onClick={isListening ? stopListening : startListening}
-                          className={`flex-1 py-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-3 ${isListening ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
-                    <Icon icon={isListening ? MicOff : Mic} className="w-5 h-5" />
+                  <button onClick={isListening ? ()=>{stopListening();} : ()=>{startListening();}}
+                          className={`flex-1 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-3 ${isListening?'bg-red-600 text-white hover:bg-red-700':'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
+                    <Icon icon={isListening ? Icons.MicOff : Icons.Mic} className="w-5 h-5"/>
                     {isListening ? 'Stop Recording' : 'Start Recording'}
                   </button>
                 </div>
@@ -466,45 +552,35 @@
 
               <div className="flex gap-4">
                 <button onClick={handleSkip}
-                        className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-300 transition-all">
-                  Skip
-                </button>
+                        className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-300">Skip</button>
                 <button onClick={handleNext}
-                        className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2">
-                  {currentQuestionIndex < questions.length - 1 ? 'Next Question' : 'Complete'}
-                  <Icon icon={ChevronRight} className="w-5 h-5" />
+                        className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 flex items-center justify-center gap-2">
+                  {currentQuestionIndex < questions.length-1 ? 'Next Question' : 'Complete'}
+                  <Icon icon={Icons.ChevronRight} className="w-5 h-5"/>
                 </button>
               </div>
-
-              {inputMode === 'voice' && speechSupported && (
-                <p className="text-center text-sm text-gray-500 mt-4">Say “next” or “continue” to advance hands-free</p>
-              )}
             </div>
 
-            {Object.keys(answers).length > 0 && (
-              <div className="bg-white rounded-xl shadow-lg p-6">
-                <h3 className="text-lg font-semibold mb-4">Progress ({Object.keys(answers).length}/{questions.length})</h3>
-                <div className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-10 gap-2">
-                  {questions.map((q, idx) => (
-                    <div key={q.id}
-                         className={`text-xs p-2 rounded text-center ${
-                           answers[q.id] ? 'bg-green-100 text-green-800'
-                           : idx === currentQuestionIndex ? 'bg-indigo-100 text-indigo-800 font-semibold'
-                           : 'bg-gray-100 text-gray-600'
-                         }`}>
-                      {idx + 1}
-                    </div>
-                  ))}
-                </div>
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h3 className="text-lg font-semibold mb-3">Quick Edit</h3>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-80 overflow-y-auto">
+                {questions.map((q,idx)=>(
+                  <button key={q.id} onClick={()=>handleEditQuestion(q.id)}
+                          className={`text-left p-3 rounded-lg border ${idx===currentQuestionIndex?'border-indigo-300 bg-indigo-50':'border-gray-200 bg-gray-50 hover:bg-gray-100'}`}>
+                    <div className="text-xs text-gray-500 mb-1">Q{idx+1} · {q.category}</div>
+                    <div className="text-sm text-gray-900">{q.text}</div>
+                    {answers[q.id] && <div className="mt-1 text-xs text-green-700">Answered</div>}
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
           </div>
         </div>
       );
     }
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
+    const root=ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<ErrorBoundary><App/></ErrorBoundary>);
   </script>
 </body>
 </html>
