@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Brief Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        const { Mic, MicOff, Upload, Download, Edit2, ChevronRight, FileText, Check, Keyboard } = lucide;
+
+        const questions = [
+            { id: 'jobNumber', category: 'Basic Info', text: 'What is the job number?' },
+            { id: 'clientName', category: 'Basic Info', text: 'What is the client name?' },
+            { id: 'inHandDate', category: 'Timeline', text: 'What is the in-hand date?' },
+            { id: 'meetingDate', category: 'Timeline', text: 'What is the meeting or launch date, if applicable?' },
+            { id: 'productTypes', category: 'Product Overview', text: 'What product types are needed? Custom, ASI, Collection, or a mix?' },
+            { id: 'specifications', category: 'Product Overview', text: 'What are the sizes, materials, finishing, and quantities?' },
+            { id: 'productReferences', category: 'Product Overview', text: 'Do you have any product references, such as images, links, or prior projects?' },
+            { id: 'budget', category: 'Budget', text: 'What is the client\'s budget or expected range?' },
+            { id: 'targetAudience', category: 'Target Audience', text: 'Who is receiving the product? Please describe age, gender, income, and region.' },
+            { id: 'audienceProfile', category: 'Target Audience', text: 'What are they like? For example, are they hard to impress, design-savvy, or traditional?' },
+            { id: 'desiredEmotion', category: 'Target Audience', text: 'What emotion or impression should this product create?' },
+            { id: 'projectPurpose', category: 'Purpose & Client Story', text: 'What is the purpose of the project? For example, is it for an event, internal use, thank-you gift, brand statement, or RFP?' },
+            { id: 'clientMessage', category: 'Purpose & Client Story', text: 'What message or story is the client trying to tell?' },
+            { id: 'backstory', category: 'Purpose & Client Story', text: 'What\'s the backstory or urgency behind this request?' },
+            { id: 'painPoints', category: 'Purpose & Client Story', text: 'What are the client\'s pain points?' },
+            { id: 'brandAssets', category: 'Design Direction', text: 'Do you have brand guidelines or logo vector files?' },
+            { id: 'moodBoard', category: 'Design Direction', text: 'Do you need a mood board? Any inspiration links or style references?' },
+            { id: 'colorPalette', category: 'Design Direction', text: 'What is the preferred color palette or Pantone references?' },
+            { id: 'logoPlacement', category: 'Design Direction', text: 'What are the logo usage and placement instructions?' },
+            { id: 'logoPreference', category: 'Design Direction', text: 'Should the logo be subtle and discreet, or obvious and front-and-center?' },
+            { id: 'flexibility', category: 'Design Direction', text: 'What is flexible versus fixed creatively?' },
+            { id: 'packaging', category: 'Packaging & Fulfillment', text: 'Are there special packaging needs, such as luxury box, retail-ready, or kitting?' },
+            { id: 'shipping', category: 'Packaging & Fulfillment', text: 'Is there multi-destination shipping or regional requirements?' },
+            { id: 'fulfillment', category: 'Packaging & Fulfillment', text: 'Will you handle fulfillment, or does the client have vendors?' },
+            { id: 'packingInstructions', category: 'Packaging & Fulfillment', text: 'Are there specific packing instructions, such as everything on a pallet or six items in one box?' },
+            { id: 'labelInstructions', category: 'Packaging & Fulfillment', text: 'Are there specific label instructions, for example for Europe or toys?' },
+            { id: 'agreements', category: 'Shipping & Compliance', text: 'Do you need to sign any agreement, such as an MSA or contract?' },
+            { id: 'shippingLocation', category: 'Shipping & Compliance', text: 'Is this domestic or international shipping?' },
+            { id: 'incoterm', category: 'Shipping & Compliance', text: 'What is the incoterm? FOB, DDP, or EXW?' },
+            { id: 'shippingType', category: 'Shipping & Compliance', text: 'What type of shipping is needed? By air or boat?' },
+            { id: 'qc', category: 'Shipping & Compliance', text: 'Do you need external QC, such as SGS? What level of QC is needed?' },
+            { id: 'routingGuides', category: 'Shipping & Compliance', text: 'Are there any routing guides or platforms, such as FedEx Freight, Ariba, or SAP?' },
+            { id: 'compliance', category: 'Shipping & Compliance', text: 'Are there any compliance risks, such as food, pharma, children\'s items, or legal considerations?' },
+            { id: 'earlyInvolvement', category: 'Shipping & Compliance', text: 'Do you need early legal or production team involvement?' },
+            { id: 'decisionMaker', category: 'Decision Making', text: 'Is your contact the decision maker and the one approving invoices?' }
+        ];
+
+        function Icon({ icon: IconComponent, ...props }) {
+            return <i dangerouslySetInnerHTML={{ __html: IconComponent.toSvg(props) }} />;
+        }
+
+        function App() {
+            const [started, setStarted] = useState(false);
+            const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+            const [answers, setAnswers] = useState({});
+            const [isListening, setIsListening] = useState(false);
+            const [transcript, setTranscript] = useState('');
+            const [uploadedFiles, setUploadedFiles] = useState([]);
+            const [completed, setCompleted] = useState(false);
+            const [inputMode, setInputMode] = useState('voice');
+            const [speechSupported, setSpeechSupported] = useState(false);
+            const recognitionRef = useRef(null);
+
+            useEffect(() => {
+                const isSupported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+                setSpeechSupported(isSupported);
+                
+                if (isSupported) {
+                    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                    recognitionRef.current = new SpeechRecognition();
+                    recognitionRef.current.continuous = true;
+                    recognitionRef.current.interimResults = true;
+                    
+                    recognitionRef.current.onstart = () => {
+                        setIsListening(true);
+                    };
+                    
+                    recognitionRef.current.onresult = (event) => {
+                        let final = '';
+                        
+                        for (let i = event.resultIndex; i < event.results.length; i++) {
+                            if (event.results[i].isFinal) {
+                                final += event.results[i][0].transcript + ' ';
+                            }
+                        }
+                        
+                        if (final) {
+                            setTranscript(prev => (prev + ' ' + final).trim());
+                            checkForAdvanceCommand(final);
+                        }
+                    };
+
+                    recognitionRef.current.onerror = (event) => {
+                        console.error('Speech recognition error:', event.error);
+                        setIsListening(false);
+                    };
+
+                    recognitionRef.current.onend = () => {
+                        setIsListening(false);
+                    };
+                }
+
+                return () => {
+                    if (recognitionRef.current) {
+                        recognitionRef.current.stop();
+                    }
+                };
+            }, []);
+
+            const checkForAdvanceCommand = (text) => {
+                const lowerText = text.toLowerCase().trim();
+                const advanceCommands = ['next', 'continue', 'next question', 'move on', 'skip'];
+                
+                if (advanceCommands.some(cmd => lowerText.includes(cmd))) {
+                    setTimeout(() => handleNext(), 500);
+                }
+            };
+
+            const startListening = () => {
+                if (recognitionRef.current && !isListening) {
+                    try {
+                        recognitionRef.current.start();
+                    } catch (error) {
+                        console.error('Error starting recognition:', error);
+                    }
+                }
+            };
+
+            const stopListening = () => {
+                if (recognitionRef.current && isListening) {
+                    recognitionRef.current.stop();
+                }
+            };
+
+            const handleStart = () => {
+                setStarted(true);
+                if (speechSupported && inputMode === 'voice') {
+                    setTimeout(() => startListening(), 500);
+                }
+            };
+
+            const handleNext = () => {
+                const currentAnswer = transcript.trim();
+                
+                if (currentAnswer) {
+                    const currentQuestion = questions[currentQuestionIndex];
+                    setAnswers(prev => ({
+                        ...prev,
+                        [currentQuestion.id]: currentAnswer
+                    }));
+                }
+
+                if (currentQuestionIndex < questions.length - 1) {
+                    setCurrentQuestionIndex(prev => prev + 1);
+                    setTranscript('');
+                    if (inputMode === 'voice' && isListening) {
+                        stopListening();
+                        setTimeout(() => startListening(), 300);
+                    }
+                } else {
+                    stopListening();
+                    setCompleted(true);
+                }
+            };
+
+            const handleSkip = () => {
+                if (currentQuestionIndex < questions.length - 1) {
+                    setCurrentQuestionIndex(prev => prev + 1);
+                    setTranscript('');
+                    if (inputMode === 'voice' && isListening) {
+                        stopListening();
+                        setTimeout(() => startListening(), 300);
+                    }
+                } else {
+                    stopListening();
+                    setCompleted(true);
+                }
+            };
+
+            const handleFileUpload = (e) => {
+                const files = Array.from(e.target.files);
+                setUploadedFiles(prev => [...prev, ...files]);
+            };
+
+            const handleEditQuestion = (questionId) => {
+                const index = questions.findIndex(q => q.id === questionId);
+                setCurrentQuestionIndex(index);
+                setTranscript(answers[questionId] || '');
+                setCompleted(false);
+                if (inputMode === 'voice' && speechSupported) {
+                    setTimeout(() => startListening(), 300);
+                }
+            };
+
+            const generateBrief = () => {
+                let content = 'PROJECT BRIEF CHECKLIST\n';
+                content += '='.repeat(50) + '\n\n';
+                
+                let lastCategory = '';
+                questions.forEach(q => {
+                    if (q.category !== lastCategory) {
+                        content += `\n${'='.repeat(50)}\n`;
+                        content += `${q.category.toUpperCase()}\n`;
+                        content += '='.repeat(50) + '\n\n';
+                        lastCategory = q.category;
+                    }
+                    const answer = answers[q.id] || 'Not answered';
+                    content += `Q: ${q.text}\nA: ${answer}\n\n`;
+                });
+
+                if (uploadedFiles.length > 0) {
+                    content += '\n' + '='.repeat(50) + '\n';
+                    content += 'ATTACHED FILES\n';
+                    content += '='.repeat(50) + '\n';
+                    uploadedFiles.forEach(file => {
+                        content += `- ${file.name}\n`;
+                    });
+                }
+
+                const blob = new Blob([content], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `brief-${answers.jobNumber || 'checklist'}-${Date.now()}.txt`;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            const loadExistingBrief = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        const content = event.target.result;
+                        const parsed = {};
+                        
+                        questions.forEach(q => {
+                            const regex = new RegExp(`Q: ${q.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\nA: ([^\\n]+(?:\\n(?!Q:)[^\\n]+)*)`, 'g');
+                            const match = regex.exec(content);
+                            if (match && match[1] && match[1] !== 'Not answered') {
+                                parsed[q.id] = match[1].trim();
+                            }
+                        });
+                        
+                        setAnswers(parsed);
+                        setStarted(true);
+                    };
+                    reader.readAsText(file);
+                }
+            };
+
+            if (!started) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-2xl shadow-2xl p-12 max-w-2xl w-full text-center">
+                            <Icon icon={FileText} className="w-20 h-20 text-indigo-600 mx-auto mb-6" />
+                            <h1 className="text-4xl font-bold text-gray-900 mb-4">Project Brief Assistant</h1>
+                            <p className="text-lg text-gray-600 mb-8">
+                                {speechSupported 
+                                    ? 'Voice-powered questionnaire to capture all project details.'
+                                    : 'Questionnaire to capture all project details.'}
+                            </p>
+                            
+                            {!speechSupported && (
+                                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                                    <p className="text-sm text-yellow-800">
+                                        Voice recognition requires Chrome, Edge, or Safari. Text input mode will be used.
+                                    </p>
+                                </div>
+                            )}
+
+                            {speechSupported && (
+                                <div className="flex gap-4 justify-center mb-8">
+                                    <button
+                                        onClick={() => setInputMode('voice')}
+                                        className={`px-6 py-3 rounded-lg font-semibold transition-all flex items-center gap-2 ${
+                                            inputMode === 'voice'
+                                                ? 'bg-indigo-600 text-white'
+                                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                        }`}
+                                    >
+                                        <Icon icon={Mic} className="w-5 h-5" />
+                                        Voice Mode
+                                    </button>
+                                    <button
+                                        onClick={() => setInputMode('text')}
+                                        className={`px-6 py-3 rounded-lg font-semibold transition-all flex items-center gap-2 ${
+                                            inputMode === 'text'
+                                                ? 'bg-indigo-600 text-white'
+                                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                        }`}
+                                    >
+                                        <Icon icon={Keyboard} className="w-5 h-5" />
+                                        Text Mode
+                                    </button>
+                                </div>
+                            )}
+
+                            <button
+                                onClick={handleStart}
+                                className="bg-indigo-600 text-white px-10 py-4 rounded-xl text-xl font-semibold hover:bg-indigo-700 transition-all transform hover:scale-105 shadow-lg mb-8"
+                            >
+                                Start Interview
+                            </button>
+                            
+                            <div className="pt-8 border-t border-gray-200">
+                                <p className="text-sm text-gray-600 mb-4">Or load an existing brief to edit</p>
+                                <label className="inline-flex items-center gap-2 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg cursor-pointer hover:bg-gray-200 transition-all">
+                                    <Icon icon={Upload} className="w-5 h-5" />
+                                    Load Existing Brief
+                                    <input type="file" accept=".txt" onChange={loadExistingBrief} className="hidden" />
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (completed) {
+                const answeredCount = Object.keys(answers).length;
+                const unansweredQuestions = questions.filter(q => !answers[q.id]);
+
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 p-4">
+                        <div className="max-w-4xl mx-auto">
+                            <div className="bg-white rounded-2xl shadow-2xl p-8 mb-6">
+                                <div className="text-center mb-8">
+                                    <Icon icon={Check} className="w-16 h-16 text-green-600 mx-auto mb-4" />
+                                    <h2 className="text-3xl font-bold text-gray-900 mb-2">Interview Complete!</h2>
+                                    <p className="text-gray-600">
+                                        You've answered {answeredCount} out of {questions.length} questions
+                                    </p>
+                                </div>
+
+                                <div className="space-y-6 mb-8">
+                                    <div>
+                                        <h3 className="text-xl font-semibold mb-4">Upload Artwork & Brand Guidelines</h3>
+                                        <label className="flex items-center justify-center gap-3 p-6 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 transition-all">
+                                            <Icon icon={Upload} className="w-6 h-6 text-indigo-600" />
+                                            <span className="text-gray-700">Upload Files</span>
+                                            <input type="file" multiple onChange={handleFileUpload} className="hidden" />
+                                        </label>
+                                        {uploadedFiles.length > 0 && (
+                                            <div className="mt-4 space-y-2">
+                                                {uploadedFiles.map((file, idx) => (
+                                                    <div key={idx} className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                                                        <Icon icon={FileText} className="w-4 h-4" />
+                                                        {file.name}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <button
+                                        onClick={generateBrief}
+                                        className="w-full bg-green-600 text-white py-4 rounded-xl font-semibold hover:bg-green-700 transition-all flex items-center justify-center gap-3"
+                                    >
+                                        <Icon icon={Download} className="w-5 h-5" />
+                                        Download Brief
+                                    </button>
+                                </div>
+
+                                {unansweredQuestions.length > 0 && (
+                                    <div className="border-t border-gray-200 pt-6">
+                                        <h3 className="text-lg font-semibold mb-4">Unanswered Questions ({unansweredQuestions.length})</h3>
+                                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                                            {unansweredQuestions.map(q => (
+                                                <button
+                                                    key={q.id}
+                                                    onClick={() => handleEditQuestion(q.id)}
+                                                    className="w-full text-left p-3 bg-yellow-50 border border-yellow-200 rounded-lg hover:bg-yellow-100 transition-all flex items-center justify-between"
+                                                >
+                                                    <div>
+                                                        <div className="text-xs text-yellow-700 font-medium">{q.category}</div>
+                                                        <div className="text-sm text-gray-700">{q.text}</div>
+                                                    </div>
+                                                    <Icon icon={Edit2} className="w-4 h-4 text-yellow-600" />
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="border-t border-gray-200 pt-6 mt-6">
+                                    <h3 className="text-lg font-semibold mb-4">Review & Edit Answers</h3>
+                                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                                        {questions.map(q => answers[q.id] && (
+                                            <button
+                                                key={q.id}
+                                                onClick={() => handleEditQuestion(q.id)}
+                                                className="w-full text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-all"
+                                            >
+                                                <div className="flex items-start justify-between gap-4">
+                                                    <div className="flex-1">
+                                                        <div className="text-xs text-indigo-600 font-medium mb-1">{q.category}</div>
+                                                        <div className="text-sm text-gray-700 font-medium mb-1">{q.text}</div>
+                                                        <div className="text-sm text-gray-600">{answers[q.id]}</div>
+                                                    </div>
+                                                    <Icon icon={Edit2} className="w-4 h-4 text-gray-400" />
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            const currentQuestion = questions[currentQuestionIndex];
+            const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-100 p-4">
+                    <div className="max-w-4xl mx-auto">
+                        <div className="mb-6">
+                            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                                <div 
+                                    className="h-full bg-indigo-600 transition-all duration-300"
+                                    style={{ width: `${progress}%` }}
+                                />
+                            </div>
+                            <div className="flex justify-between text-sm text-gray-600 mt-2">
+                                <span>Question {currentQuestionIndex + 1} of {questions.length}</span>
+                                <span>{Math.round(progress)}% Complete</span>
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-2xl shadow-2xl p-8 mb-6">
+                            <div className="mb-6">
+                                <div className="text-sm font-medium text-indigo-600 mb-2">{currentQuestion.category}</div>
+                                <h2 className="text-2xl font-bold text-gray-900">{currentQuestion.text}</h2>
+                            </div>
+
+                            <div className="mb-6">
+                                {inputMode === 'text' || !speechSupported ? (
+                                    <textarea
+                                        value={transcript}
+                                        onChange={(e) => setTranscript(e.target.value)}
+                                        className="w-full h-32 p-4 border-2 border-gray-300 rounded-xl focus:border-indigo-500 focus:outline-none resize-none"
+                                        placeholder="Type your answer here..."
+                                    />
+                                ) : (
+                                    <div className="bg-gray-50 rounded-xl p-6 min-h-32 border-2 border-dashed border-gray-300">
+                                        <p className="text-gray-700 whitespace-pre-wrap">
+                                            {transcript || (isListening ? '🎤 Listening...' : 'Click "Start Recording" to begin')}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {inputMode === 'voice' && speechSupported && (
+                                <div className="flex gap-4 mb-4">
+                                    <button
+                                        onClick={isListening ? stopListening : startListening}
+                                        className={`flex-1 py-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-3 ${
+                                            isListening 
+                                                ? 'bg-red-600 text-white hover:bg-red-700' 
+                                                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                                        }`}
+                                    >
+                                        <Icon icon={isListening ? MicOff : Mic} className="w-5 h-5" />
+                                        {isListening ? 'Stop Recording' : 'Start Recording'}
+                                    </button>
+                                </div>
+                            )}
+
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={handleSkip}
+                                    className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-xl font-semibold hover:bg-gray-300 transition-all"
+                                >
+                                    Skip
+                                </button>
+                                <button
+                                    onClick={handleNext}
+                                    className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2"
+                                >
+                                    {currentQuestionIndex < questions.length - 1 ? 'Next Question' : 'Complete'}
+                                    <Icon icon={ChevronRight} className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {inputMode === 'voice' && speechSupported && (
+                                <p className="text-center text-sm text-gray-500 mt-4">
+                                    Say "next" or "continue" to automatically advance
+                                </p>
+                            )}
+                        </div>
+
+                        {Object.keys(answers).length > 0 && (
+                            <div className="bg-white rounded-xl shadow-lg p-6">
+                                <h3 className="text-lg font-semibold mb-4">Progress ({Object.keys(answers).length}/{questions.length})</h3>
+                                <div className="grid grid-cols-5 sm:grid-cols-7 md:grid-cols-10 gap-2">
+                                    {questions.map((q, idx) => (
+                                        <div
+                                            key={q.id}
+                                            className={`text-xs p-2 rounded text-center ${
+                                                answers[q.id] 
+                                                    ? 'bg-green-100 text-green-800' 
+                                                    : idx === currentQuestionIndex
+                                                    ? 'bg-indigo-100 text-indigo-800 font-semibold'
+                                                    : 'bg-gray-100 text-gray-600'
+                                            }`}
+                                        >
+                                            {idx + 1}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
