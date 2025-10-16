@@ -22,8 +22,7 @@
   <!-- jsPDF (PDF) -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
-  <!-- JSZip (zip packaging) -->
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <!-- FileSaver (save blobs) -->
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 </head>
 <body>
@@ -56,7 +55,7 @@
       Mic: L['mic'], MicOff: L['mic-off'], Upload: L['upload'], Download: L['download'],
       Edit2: L['edit-2'], ChevronRight: L['chevron-right'], FileText: L['file-text'],
       Check: L['check'], Keyboard: L['keyboard'], HelpCircle: L['help-circle'], List: L['list-ordered'],
-      Save: L['save'], RotateCcw: L['rotate-ccw'], FileUp: L['file-up'], Archive: L['archive']
+      RotateCcw: L['rotate-ccw'], FileUp: L['file-up']
     };
     function Icon({icon:IconDef, ...props}){ if(!IconDef) return null; try { return <span dangerouslySetInnerHTML={{__html: IconDef.toSvg(props)}}/>; } catch { return null; } }
 
@@ -99,14 +98,10 @@
       { id:'decisionMaker', category:'Decision Making', text:'Is your contact the decision maker and the one approving invoices?' }
     ];
 
-    /* Text cleanup + style transforms (local, deterministic) */
+    /* Text cleanup + style transforms */
     const fillerRE = /\b(um+|uh+|erm+|like,?|you know,?)\b/gi;
     const multiSpaceRE = /\s{2,}/g;
-    // Match sequences like B O U L U D / B-O-U-L-U-D / B, O, U...
-    const spelledSeqRE = /(?:[,;:\-–—]\s*)?(?:\b([A-Za-z])\b[\s,\-]*){2,}(?=$|\.)/g;
-
     function stripSpelledOutTrailing(text){
-      // Remove trailing spelled-out sequences after a name: "Daniel Boulud, B-O-U-L-U-D" -> "Daniel Boulud"
       return text.replace(/([A-Za-z][A-Za-z'’\-]+\s+[A-Za-z][A-Za-z'’\-]+)\s*,?\s*(?:\b([A-Za-z])\b[\s,\-]*){2,}(\.)?/g, '$1$3');
     }
     function cleanTranscript(s){
@@ -118,7 +113,6 @@
     }
     function conciseStyle(s){
       if(!s) return s;
-      // Split into clauses, remove redundancies, tighten punctuation
       return cleanTranscript(s)
         .replace(/\b(I think|we believe|sort of|kind of|basically|actually)\b/gi,'')
         .replace(/\s{2,}/g,' ')
@@ -127,28 +121,55 @@
         .replace(/,\s*and\b/gi, ' and')
         .trim();
     }
-    function ogilvyStyle(s){
-      // Crisp, declarative, benefits-forward. Deterministic.
+    function polishedStyle(s){
       const base = conciseStyle(s);
       if(!base) return base;
-      let out = base;
-      // Capitalize first letter of sentences
-      out = out.replace(/(^|[.!?]\s+)([a-z])/g, (m,p,chr)=>p+chr.toUpperCase());
-      // Shorten rambling with em dashes where helpful
+      let out = base.replace(/(^|[.!?]\s+)([a-z])/g, (m,p,chr)=>p+chr.toUpperCase());
       out = out.replace(/\b(so|then|and then)\b/gi,'—').replace(/\s—\s/g,' — ');
       return out;
     }
     async function rewriteLocal(text, mode){
       if(mode==='concise') return conciseStyle(text);
-      if(mode==='ogilvy') return ogilvyStyle(text);
+      if(mode==='polished') return polishedStyle(text);
       return cleanTranscript(text);
     }
+    // Swap to server endpoint later if desired
+    async function rewriteWithAI(text, mode){ return rewriteLocal(text, mode); }
 
-    // Optional server-side AI rewrite (requires your endpoint)
-    async function rewriteWithAI(text, mode){
-      // Replace URL with your serverless function; keep key on the server.
-      // return fetch('https://YOUR-ENDPOINT.example/rewrite',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,mode})}).then(r=>r.json()).then(j=>j.text);
-      return rewriteLocal(text, mode); // safe fallback
+    /* PDF session embed / extract (custom trailer markers) */
+    const SESSION_BEGIN = '%%BRIEF-SESSION-BEGIN%%';
+    const SESSION_END   = '%%BRIEF-SESSION-END%%';
+    function appendSessionToPdfBlob(pdfBlob, sessionObj){
+      return new Promise((resolve,reject)=>{
+        const fr = new FileReader();
+        fr.onload = () => {
+          try{
+            const pdfBytes = new Uint8Array(fr.result);
+            const sessionJson = JSON.stringify(sessionObj);
+            const sessionB64 = btoa(unescape(encodeURIComponent(sessionJson)));
+            const trailerStr = `\n${SESSION_BEGIN}\n${sessionB64}\n${SESSION_END}\n`;
+            const trailerBytes = new TextEncoder().encode(trailerStr);
+            const merged = new Uint8Array(pdfBytes.length + trailerBytes.length);
+            merged.set(pdfBytes,0); merged.set(trailerBytes,pdfBytes.length);
+            resolve(new Blob([merged], {type:'application/pdf'}));
+          }catch(e){ reject(e); }
+        };
+        fr.onerror = reject;
+        fr.readAsArrayBuffer(pdfBlob);
+      });
+    }
+    async function extractSessionFromPdf(file){
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      const textTail = new TextDecoder().decode(bytes.slice(Math.max(0, bytes.length - 20000))); // scan last 20KB
+      const beginIdx = textTail.lastIndexOf(SESSION_BEGIN);
+      const endIdx = textTail.lastIndexOf(SESSION_END);
+      if(beginIdx === -1 || endIdx === -1 || endIdx <= beginIdx) return null;
+      const payload = textTail.substring(beginIdx + SESSION_BEGIN.length, endIdx).trim();
+      try{
+        const json = decodeURIComponent(escape(atob(payload)));
+        return JSON.parse(json);
+      }catch{ return null; }
     }
 
     /* App */
@@ -163,7 +184,7 @@
       const [completed,setCompleted]=useState(false);
       const [inputMode,setInputMode]=useState('voice');
       const [speechSupported,setSpeechSupported]=useState(false);
-      const [style,setStyle]=useState('ogilvy'); // 'raw'|'concise'|'ogilvy'
+      const [style,setStyle]=useState('polished'); // 'raw'|'concise'|'polished'
       const [jumpTo,setJumpTo]=useState('');
 
       const recognitionRef=useRef(null);
@@ -250,14 +271,7 @@
 
       const handleEditQuestion=(qid)=>{ const idx=questions.findIndex(q=>q.id===qid); if(idx<0)return; setCurrentQuestionIndex(idx); setTranscript(answers[qid]||''); setCompleted(false); window.scrollTo({top:0,behavior:'smooth'}); if(inputMode==='voice'&&speechSupported){ setTimeout(startListening,300); } };
 
-      /* Export: JSON (state) */
-      const downloadJSON=()=>{
-        const payload={ version:1, timestamp:Date.now(), answers, uploadedNames:(uploadedFiles||[]).map(f=>f.name) };
-        const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
-        saveAs(blob, `brief-${answers.jobNumber||'session'}.json`);
-      };
-
-      /* Export: PDF (embeds JSON for re-import) */
+      /* Export: PDF (embeds session payload for re-import) */
       const makePDF=()=>{
         const { jsPDF } = window.jspdf || {};
         if(!jsPDF){ alert('PDF library not loaded.'); return null; }
@@ -275,47 +289,42 @@
           addLine(`→ ${answers[q.id] || 'Not answered'}`); y+=6;
         });
         if((uploadedFiles||[]).length){ y+=8; doc.setFont('Helvetica','bold'); addLine('ATTACHED FILES'); doc.setFont('Helvetica','normal'); uploadedFiles.forEach(f=>addLine(`- ${f.name}`)); }
-        // Embed JSON as metadata for re-import
-        const payload={version:1,answers};
-        try{ doc.setProperties({ title:`Brief ${answers.jobNumber||''}` , subject: JSON.stringify(payload)}); }catch{}
+        try{ doc.setProperties({ title:`Brief ${answers.jobNumber||''}` }); }catch{}
         return doc;
       };
-      const downloadPDF=()=>{
+      const downloadPDF=async ()=>{
         const doc=makePDF(); if(!doc) return;
-        doc.save(`brief-${answers.jobNumber||'session'}.pdf`);
-      };
-
-      /* Import: JSON or our own PDF with embedded JSON */
-      const loadSession=(e)=>{
-        const file=(e.target && e.target.files && e.target.files[0])||null; if(!file) return;
-        const name=(file.name||'').toLowerCase();
-        if(name.endsWith('.json')){
-          const r=new FileReader();
-          r.onload=(ev)=>{ try{ const data=JSON.parse(String(ev.target.result||'{}')); if(data && data.answers){ setAnswers(data.answers); setStarted(true);} }catch{ alert('Bad JSON'); } };
-          r.readAsText(file);
-        }else if(name.endsWith('.pdf')){
-          // We cannot reliably parse arbitrary PDFs. We only support PDFs we generated (JSON in metadata).
-          // jsPDF cannot read; browser cannot read metadata cross-PDF. So we attempt a naive text read as fallback.
-          const r=new FileReader();
-          r.onload=()=>{ alert('If this PDF was generated by this tool, re-open the original JSON; PDF re-import is limited in-browser.'); };
-          r.readAsArrayBuffer(file);
-        }else{
-          alert('Use the JSON you downloaded from this tool, or a PDF generated here (limited re-import).');
+        const baseBlob = doc.output('blob');
+        const session = { version:1, timestamp:Date.now(), answers, fileNames:(uploadedFiles||[]).map(f=>f.name) };
+        try{
+          const finalBlob = await appendSessionToPdfBlob(baseBlob, session);
+          saveAs(finalBlob, `brief-${answers.jobNumber||'session'}.pdf`);
+        }catch(e){
+          console.error(e);
+          // Fallback: save without embedded session
+          saveAs(baseBlob, `brief-${answers.jobNumber||'session'}.pdf`);
         }
       };
 
-      /* Zip: PDF + uploads */
-      const downloadZip=async ()=>{
-        const zip=new JSZip();
-        // Add PDF
-        const doc=makePDF(); if(doc){ const pdfBlob=doc.output('blob'); zip.file(`brief-${answers.jobNumber||'session'}.pdf`, pdfBlob); }
-        // Add uploads
-        for(const f of (uploadedFiles||[])){ const buf=await f.arrayBuffer(); zip.file(`assets/${f.name}`, buf); }
-        const out=await zip.generateAsync({type:'blob'});
-        saveAs(out, `brief-package-${answers.jobNumber||'session'}.zip`);
+      /* Import: Only PDF (with our embedded session) */
+      const loadSession=(e)=>{
+        const file=(e.target && e.target.files && e.target.files[0])||null; if(!file) return;
+        const name=(file.name||'').toLowerCase();
+        if(!name.endsWith('.pdf')){ alert('Please select a PDF generated by this tool.'); return; }
+        extractSessionFromPdf(file).then((payload)=>{
+          if(payload && payload.answers){
+            setAnswers(payload.answers);
+            setStarted(true);
+            setCompleted(false);
+            setCurrentQuestionIndex(0);
+            setTranscript('');
+            window.scrollTo({top:0,behavior:'smooth'});
+          }else{
+            alert('This PDF does not contain editable session data from this tool.');
+          }
+        });
       };
 
-      /* Upload handlers */
       const onUploadFiles=(e)=>{ const files=Array.from(e.target.files||[]); if(!files.length) return; setUploadedFiles(prev=>[...prev,...files]); };
 
       /* UI */
@@ -336,14 +345,13 @@
                   <li><strong>Answer.</strong> Keep it crisp—we do the cleanup.</li>
                   <li><strong>Hands-free.</strong> Say “next,” “continue,” or “skip.”</li>
                   <li><strong>Add brand files.</strong> Logos, guidelines, references.</li>
-                  <li><strong>Export.</strong> PDF, JSON for edits, or a full ZIP.</li>
+                  <li><strong>Export PDF.</strong> Download, reopen later to keep editing.</li>
                 </ol>
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   <label className="inline-flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg cursor-pointer hover:bg-gray-200">
-                    <Icon icon={Icons.FileUp} className="w-4 h-4"/> Load previous (JSON/PDF*)
-                    <input type="file" accept=".json,.pdf" onChange={loadSession} className="hidden"/>
+                    <Icon icon={Icons.FileUp} className="w-4 h-4"/> Load Previous PDF to continue making edits
+                    <input type="file" accept=".pdf" onChange={loadSession} className="hidden"/>
                   </label>
-                  <span className="text-xs text-gray-500">*PDF re-import works only for PDFs generated here (metadata embedded).</span>
                 </div>
               </div>
 
@@ -369,7 +377,7 @@
                   <select value={style} onChange={e=>setStyle(e.target.value)} className="border rounded-lg px-3 py-2 text-sm">
                     <option value="raw">Raw</option>
                     <option value="concise">Concise</option>
-                    <option value="ogilvy">Ogilvy-ish</option>
+                    <option value="polished">Polished</option>
                   </select>
                 </div>
               </div>
@@ -419,12 +427,6 @@
                   <div className="space-y-3">
                     <button onClick={downloadPDF} className="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 flex items-center justify-center gap-2">
                       <Icon icon={Icons.Download} className="w-5 h-5"/> Download PDF
-                    </button>
-                    <button onClick={downloadJSON} className="w-full bg-gray-800 text-white py-3 rounded-lg font-semibold hover:bg-black flex items-center justify-center gap-2">
-                      <Icon icon={Icons.Save} className="w-5 h-5"/> Download JSON (editable)
-                    </button>
-                    <button onClick={downloadZip} className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 flex items-center justify-center gap-2">
-                      <Icon icon={Icons.Archive} className="w-5 h-5"/> Download ZIP (PDF + assets)
                     </button>
                   </div>
                 </div>
@@ -494,7 +496,7 @@
                 <select value={style} onChange={e=>setStyle(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm">
                   <option value="raw">Raw</option>
                   <option value="concise">Concise</option>
-                  <option value="ogilvy">Ogilvy-ish</option>
+                  <option value="polished">Polished</option>
                 </select>
               </div>
               <div className="ml-auto flex items-center gap-2">
@@ -504,8 +506,8 @@
                   <Icon icon={Icons.List} className="w-4 h-4"/> Jump
                 </button>
                 <label className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-sm cursor-pointer hover:bg-gray-200 flex items-center gap-2">
-                  <Icon icon={Icons.RotateCcw} className="w-4 h-4"/> Load
-                  <input type="file" accept=".json,.pdf" onChange={loadSession} className="hidden"/>
+                  <Icon icon={Icons.RotateCcw} className="w-4 h-4"/> Load Previous PDF to continue making edits
+                  <input type="file" accept=".pdf" onChange={loadSession} className="hidden"/>
                 </label>
               </div>
             </div>
