@@ -1,11 +1,10 @@
-/* LR Paris Brief Tool
-   - Instructions + section headers
-   - Voice commands: next/continue/next question, back/previous, skip, not applicable/N A, stop/start recording
-   - Start/Stop recording toggle button
+/* LR Paris Brief Tool (Enterprise UI)
+   - Always-on instructions with inline editor (saves to localStorage)
+   - Start/Stop recording toggle (robust restart on onend; truly stops when asked)
+   - Voice commands: next/continue/next question, back/previous, skip, not applicable/N A, start/stop recording
    - Product vs Packaging → Packaging multi-select → only relevant follow-ups
-   - Continue always advances (saves "Unanswered" if empty)
-   - Autosave to localStorage; Export JSON/PDF
-   - Client-side Asana PAT task helper (modal)
+   - Continue always advances (records "Unanswered" if empty)
+   - Autosave; JSON/PDF export; client-side Asana PAT sender
 */
 
 (() => {
@@ -15,31 +14,29 @@
     questions: document.getElementById("question-screen"),
     complete: document.getElementById("completion-screen"),
   };
-  const startBtn = document.getElementById("start-btn");
 
-  const qText = document.getElementById("question-text");
+  const startBtn = document.getElementById("start-btn");
+  const recordPill = document.getElementById("record-pill");
+  const toggleMicBtn = document.getElementById("toggle-mic");
+
   const sectionTitle = document.getElementById("section-title");
+  const qText = document.getElementById("question-text");
   const choicesBox = document.getElementById("choices");
   const voiceInput = document.getElementById("voice-input");
 
-  const nextBtn = document.getElementById("next-btn");
   const backBtn = document.getElementById("back-btn");
   const skipBtn = document.getElementById("skip-btn");
   const naBtn = document.getElementById("na-btn");
+  const nextBtn = document.getElementById("next-btn");
 
   const progress = document.getElementById("progress");
-  const autosaveBadge = document.getElementById("autosave");
+  const autosave = document.getElementById("autosave");
 
-  const openHelpBtn = document.getElementById("open-help");
-  const helpModal = document.getElementById("help-modal");
-  const helpClose = document.getElementById("help-close");
-
-  const toggleMicBtn = document.getElementById("toggle-mic");
-  const dotLive = document.getElementById("dot-live");
-
-  const exportJSONBtn = document.getElementById("export-json");
-  const exportPDFBtn = document.getElementById("export-pdf");
-  const restartBtn = document.getElementById("restart");
+  const instDetails = document.getElementById("edit-inst");
+  const instTextarea = document.getElementById("inst-textarea");
+  const instSave = document.getElementById("inst-save");
+  const instReset = document.getElementById("inst-reset");
+  const instContent = document.getElementById("instructions-content");
 
   const asanaOpenBtn = document.getElementById("asana-open");
   const asanaModal = document.getElementById("asana-modal");
@@ -51,7 +48,8 @@
   const asanaMsg = document.getElementById("asana-msg");
 
   // ---------- STATE ----------
-  const STORAGE_KEY = "lrp_brief_draft_v4";
+  const STORAGE_KEY = "lrp_brief_draft_v5";
+  const INST_KEY = "lrp_brief_instructions_html";
   let state = {
     startedAt: null,
     branch: null,            // ["Product","Packaging"]
@@ -62,23 +60,34 @@
     step: 0,
   };
 
-  // ---------- UTILITIES ----------
-  const saveDraft = debounce(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); flash(autosaveBadge); } catch {}
-  }, 350);
-  function resetDraft(){
-    state = { startedAt:null, branch:null, packagingTypes:[], answers:[], transcript:"", queue:[], step:0 };
-    try { localStorage.removeItem(STORAGE_KEY); } catch {}
-  }
+  // ---------- UTIL ----------
+  function debounce(fn, wait){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), wait); }; }
+  const flash = (el)=>{ el.classList.remove("show"); void el.offsetWidth; el.classList.add("show"); setTimeout(()=>el.classList.remove("show"), 800); };
+  const saveDraft = debounce(()=>{ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); flash(autosave);}catch{} }, 300);
+  function download(name, data, mime="application/json"){ const b=new Blob([data],{type:mime}); const u=URL.createObjectURL(b); const a=document.createElement("a"); a.href=u; a.download=name; a.click(); URL.revokeObjectURL(u); }
   function setScreen(name){ Object.values(screens).forEach(s=>s.classList.remove("active")); screens[name].classList.add("active"); }
-  function setProgress(){ const t=state.queue.length||1; progress.textContent=`Step ${Math.min(state.step+1,t)} of ${t}`; }
-  function flash(el){ el?.classList?.remove("show"); void el?.offsetWidth; el?.classList?.add("show"); setTimeout(()=>el?.classList?.remove("show"),800); }
-  function download(name, data, mime="application/json"){
-    const blob = new Blob([data], {type:mime}); const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url);
-  }
+  function setProgress(){ const t=state.queue.length||1; progress.textContent = `Step ${Math.min(state.step+1,t)} of ${t}`; }
   function upsertAnswer(a){ const i=state.answers.findIndex(x=>x.id===a.id); if(i>=0) state.answers[i]=a; else state.answers.push(a); saveDraft(); }
   function selections(){ return [...choicesBox.querySelectorAll(".choice")].filter(b=>b.dataset.selected==="true").map(b=>b.textContent); }
+  function escapeHtml(str){ return str.replace(/[&<>'"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+
+  // ---------- INSTRUCTIONS (inline editor) ----------
+  // Load saved instructions HTML if present
+  try {
+    const savedHtml = localStorage.getItem(INST_KEY);
+    if (savedHtml) instContent.innerHTML = savedHtml;
+  } catch {}
+  // Prefill editor with current HTML
+  instTextarea.value = instContent.innerHTML.trim();
+  instSave.onclick = () => {
+    instContent.innerHTML = instTextarea.value.trim();
+    try { localStorage.setItem(INST_KEY, instContent.innerHTML); } catch {}
+    instDetails.open = false;
+  };
+  instReset.onclick = () => {
+    try { localStorage.removeItem(INST_KEY); } catch {}
+    location.reload();
+  };
 
   // ---------- QUESTION BANK ----------
   const entryQuestion = { id:"entry-branch", text:"What kind of brief are you creating?", type:"multi", options:["Product","Packaging"] };
@@ -188,36 +197,26 @@
   };
 
   // ---------- QUEUE ----------
-  function buildInitialQueue(){
-    state.queue = [entryQuestion]; // first question always
-  }
-
+  function buildInitialQueue(){ state.queue = [entryQuestion]; }
   function finalizeQueueAfterEntry(){
-    // Add packaging type picker if Packaging chosen
-    if (Array.isArray(state.branch) && state.branch.includes("Packaging")) {
-      // Ensure pkg-types is second
-      if (!state.queue.find(q=>q.id==="pkg-types")) {
-        state.queue.splice(1,0,packagingTypeQuestion);
-      }
+    if (Array.isArray(state.branch) && state.branch.includes("Packaging")){
+      if (!state.queue.find(q=>q.id==="pkg-types")) state.queue.splice(1,0,packagingTypeQuestion);
     }
   }
-
   function splicePackagingBanks(){
-    // After user chooses packaging types, inject their banks after pkg-types
     const pkgIdx = state.queue.findIndex(q=>q.id==="pkg-types");
-    if (pkgIdx >= 0) {
-      // Remove any previously injected banks
+    if (pkgIdx>=0){
+      // remove previously injected banks
       state.queue = state.queue.filter(q => !q.__bankName || q.__bankName==="Product" || q.id==="pkg-types" || q.id==="entry-branch");
-      const inserts = [];
-      state.packagingTypes.forEach(name => {
-        (BANK[name]||[]).forEach(item => inserts.push({...item, __bankName:name}));
+      const inserts=[];
+      state.packagingTypes.forEach(name=>{
+        (BANK[name]||[]).forEach(item=>inserts.push({...item,__bankName:name}));
       });
       state.queue.splice(pkgIdx+1,0,...inserts);
     }
-    // Append Product bank at end if selected
-    if (Array.isArray(state.branch) && state.branch.includes("Product")) {
-      const already = state.queue.some(q => q.__bankName==="Product");
-      if (!already) BANK.Product.forEach(item => state.queue.push({...item, __bankName:"Product"}));
+    if (Array.isArray(state.branch) && state.branch.includes("Product")){
+      const already = state.queue.some(q=>q.__bankName==="Product");
+      if (!already) BANK.Product.forEach(item=>state.queue.push({...item,__bankName:"Product"}));
     }
   }
 
@@ -229,27 +228,24 @@
     if (q.__bankName==="Product") return "Product";
     return "Questions";
   }
-
   function renderStep(){
     setProgress();
     const q = state.queue[state.step];
-    if (!q) { setScreen("complete"); return; }
-
+    if (!q){ setScreen("complete"); return; }
     sectionTitle.textContent = humanSectionFor(q);
     qText.textContent = q.text;
     voiceInput.value = "";
     choicesBox.innerHTML = "";
-
-    if (q.type === "single" || q.type === "multi"){
-      (q.options || []).forEach(opt => {
+    if (q.type==="single" || q.type==="multi"){
+      (q.options||[]).forEach(opt=>{
         const btn = document.createElement("button");
         btn.className = "choice";
         btn.textContent = opt;
         btn.dataset.selected = "false";
-        btn.onclick = () => {
+        btn.onclick = ()=>{
           if (q.type === "single"){
             [...choicesBox.children].forEach(c=>c.dataset.selected="false");
-            btn.dataset.selected = "true";
+            btn.dataset.selected="true";
           } else {
             btn.dataset.selected = (btn.dataset.selected==="true") ? "false" : "true";
           }
@@ -257,7 +253,11 @@
         choicesBox.appendChild(btn);
       });
     } else {
-      choicesBox.innerHTML = `<div class="hint" style="color:#64748b;font-size:12px;">Answer by voice or type below.</div>`;
+      // text question uses voice/typing only
+      const hint = document.createElement("div");
+      hint.style.cssText = "color:#a8b0c6;font-size:12px";
+      hint.textContent = "Answer by voice or type below.";
+      choicesBox.appendChild(hint);
     }
   }
 
@@ -265,42 +265,17 @@
   function advanceWith(override){
     const q = state.queue[state.step];
     const choiceVals = (q.type==="text") ? [] : selections();
-    const notes = (override && override.notes !== undefined)
-      ? override.notes
-      : voiceInput.value.trim();
+    const notes = (override && override.notes !== undefined) ? override.notes : voiceInput.value.trim();
+    const finalChoices = override && override.choiceLabel ? [override.choiceLabel] : choiceVals;
+    const finalNotes = (!finalChoices.length && !notes) ? "Unanswered" : notes;
 
-    let finalChoices = choiceVals;
-    let finalNotes = notes;
+    upsertAnswer({ id:q.id, question:q.text, section:humanSectionFor(q), type:q.type, choices:finalChoices, notes:finalNotes });
 
-    if (override && override.choiceLabel) {
-      finalChoices = [override.choiceLabel];
-    }
-    if (!finalChoices.length && !finalNotes) {
-      finalNotes = "Unanswered";
-    }
-
-    upsertAnswer({
-      id: q.id,
-      question: q.text,
-      section: humanSectionFor(q),
-      type: q.type,
-      choices: finalChoices,
-      notes: finalNotes
-    });
-
-    // Special expansion points
-    if (q.id === "entry-branch"){
-      state.branch = Array.from(new Set([...(choiceVals || [])]));
-      finalizeQueueAfterEntry();
-    }
-    if (q.id === "pkg-types"){
-      state.packagingTypes = choiceVals;
-      splicePackagingBanks();
-    }
+    if (q.id==="entry-branch"){ state.branch = Array.from(new Set([...(choiceVals||[])])); finalizeQueueAfterEntry(); }
+    if (q.id==="pkg-types"){ state.packagingTypes = choiceVals; splicePackagingBanks(); }
 
     state.step++;
-    if (state.step >= state.queue.length) setScreen("complete");
-    else renderStep();
+    if (state.step >= state.queue.length) setScreen("complete"); else renderStep();
   }
 
   nextBtn.onclick = () => advanceWith();
@@ -308,13 +283,12 @@
   naBtn.onclick   = () => advanceWith({ choiceLabel:"Not applicable", notes:"" });
   backBtn.onclick = () => { if (state.step>0){ state.step--; renderStep(); } };
 
-  // ---------- SPEECH (Web Speech API) ----------
-  let recognition = null;
-  let isListening = false;
+  // ---------- SPEECH ----------
+  let recognition=null, isListening=false, allowAutoRestart=true;
 
   function initSpeech(){
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
+    if (!SR){
       micOffUI("Voice not available in this browser");
       return;
     }
@@ -323,80 +297,78 @@
     recognition.interimResults = true;
     recognition.lang = "en-US";
 
-    recognition.onresult = (evt) => {
-      let finalText = "";
-      let interim = "";
-      for (let i=evt.resultIndex; i<evt.results.length; i++){
+    recognition.onresult = (evt)=>{
+      let finalText="", interim="";
+      for (let i=evt.resultIndex;i<evt.results.length;i++){
         const t = evt.results[i][0].transcript;
         if (evt.results[i].isFinal) finalText += t + " ";
         else interim += t;
       }
-      if (finalText){
-        handleSpeech(finalText.trim());
-      } else if (interim){
-        voiceInput.placeholder = interim;
+      if (finalText) handleSpeech(finalText.trim());
+      else if (interim) voiceInput.placeholder = interim;
+    };
+    recognition.onerror = ()=>{ /* keep UI usable */ };
+    recognition.onend = ()=>{
+      if (isListening && allowAutoRestart){
+        try { recognition.start(); } catch {}
       }
     };
+  }
 
-    recognition.onerror = () => { /* keep UI usable even if speech breaks */ };
-    recognition.onend = () => { if (isListening) try{ recognition.start(); }catch{} };
+  function handleSpeech(text){
+    state.transcript += (text + " ");
+    const t = text.toLowerCase();
+    if (/\b(stop recording)\b/.test(t)){ stopListening(true); return; }
+    if (/\b(start recording)\b/.test(t)){ startListening(); return; }
+    if (/\b(next|continue|next question)\b/.test(t)){ advanceWith(); return; }
+    if (/\b(back|previous|go back)\b/.test(t)){ if (state.step>0){ state.step--; renderStep(); } return; }
+    if (/\b(skip)\b/.test(t)){ advanceWith({ choiceLabel:"Skip", notes:"" }); return; }
+    if (/\b(not applicable|n a|n\.a\.)\b/.test(t)){ advanceWith({ choiceLabel:"Not applicable", notes:"" }); return; }
+
+    const q = state.queue[state.step];
+    if (q){ voiceInput.value = (voiceInput.value ? voiceInput.value + " " : "") + text; }
+    saveDraft();
   }
 
   function startListening(){
     if (!recognition) return;
+    allowAutoRestart = true;
     try { recognition.start(); isListening = true; micOnUI(); } catch {}
   }
-  function stopListening(){
+  function stopListening(userRequested=false){
     if (!recognition) return;
-    try { recognition.stop(); isListening = false; micOffUI(); } catch {}
+    allowAutoRestart = !userRequested; // if user asked to stop, do not auto-restart
+    try { recognition.stop(); isListening = !userRequested; } catch {}
+    if (userRequested){ micOffUI(); } // reflect explicit stop
   }
 
   function micOnUI(){
-    dotLive.classList.remove("off");
+    recordPill.classList.remove("off");
+    recordPill.textContent = "● Recording";
     toggleMicBtn.classList.remove("danger");
     toggleMicBtn.textContent = "Stop Recording";
     toggleMicBtn.setAttribute("aria-pressed","true");
   }
   function micOffUI(msg){
-    dotLive.classList.add("off");
+    recordPill.classList.add("off");
+    recordPill.textContent = "◦ Mic Off";
     toggleMicBtn.classList.add("danger");
     toggleMicBtn.textContent = "Start Recording";
     toggleMicBtn.setAttribute("aria-pressed","false");
-    if (msg) {
-      // non-blocking banner
-      const el = document.createElement("div");
-      el.style.cssText="background:#fff3cd;border:1px solid #ffeeba;color:#856404;padding:8px 10px;border-radius:8px;margin:8px 0;font-size:12px;";
-      el.textContent = msg;
-      (document.querySelector(".topbar") || screens.questions).prepend(el);
+    if (msg){
+      const banner = document.createElement("div");
+      banner.style.cssText="margin-top:8px;background:#1b2244;border:1px solid #2a3b6d;color:#cfe1ff;padding:8px 10px;border-radius:8px;font-size:12px";
+      banner.textContent = msg;
+      document.querySelector(".masthead").appendChild(banner);
     }
   }
-
   toggleMicBtn.onclick = () => {
-    if (isListening) stopListening(); else startListening();
+    if (toggleMicBtn.getAttribute("aria-pressed")==="true"){ stopListening(true); }
+    else { startListening(); }
   };
 
-  // Voice command parser
-  function handleSpeech(text){
-    state.transcript += (text + " ");
-    // Commands
-    const t = text.toLowerCase();
-    if (/\b(stop recording)\b/.test(t)) { stopListening(); return; }
-    if (/\b(start recording)\b/.test(t)) { startListening(); return; }
-    if (/\b(next|continue|next question)\b/.test(t)) { advanceWith(); return; }
-    if (/\b(back|previous|go back)\b/.test(t)) { if (state.step>0){ state.step--; renderStep(); } return; }
-    if (/\b(skip)\b/.test(t)) { advanceWith({ choiceLabel:"Skip", notes:"" }); return; }
-    if (/\b(not applicable|n a|n\.a\.)\b/.test(t)) { advanceWith({ choiceLabel:"Not applicable", notes:"" }); return; }
-
-    // Otherwise treat as answer text for current question
-    const q = state.queue[state.step];
-    if (q) {
-      voiceInput.value = (voiceInput.value ? voiceInput.value + " " : "") + text;
-    }
-    saveDraft();
-  }
-
   // ---------- EXPORT ----------
-  exportJSONBtn.onclick = () => {
+  document.getElementById("export-json").onclick = () => {
     const payload = {
       startedAt: state.startedAt,
       finishedAt: new Date().toISOString(),
@@ -407,22 +379,15 @@
     };
     download(`brief_${Date.now()}.json`, JSON.stringify(payload, null, 2));
   };
-
-  exportPDFBtn.onclick = () => {
-    const payload = {
-      branch: state.branch,
-      packagingTypes: state.packagingTypes,
-      answers: state.answers,
-      transcript: state.transcript
-    };
+  document.getElementById("export-pdf").onclick = () => {
+    const payload = { branch: state.branch, packagingTypes: state.packagingTypes, answers: state.answers, transcript: state.transcript };
     const w = window.open("", "_blank");
     w.document.write(`<pre style="white-space:pre-wrap;font:14px/1.4 system-ui;">${escapeHtml(JSON.stringify(payload, null, 2))}</pre>`);
     w.document.close(); w.focus(); w.print();
   };
+  document.getElementById("restart").onclick = () => { try{ localStorage.removeItem(STORAGE_KEY);}catch{}; state = { ...state, startedAt:null, branch:null, packagingTypes:[], answers:[], transcript:"", queue:[], step:0 }; setScreen("welcome"); };
 
-  restartBtn.onclick = () => { resetDraft(); setScreen("welcome"); };
-
-  // ---------- ASANA (client-side PAT helper) ----------
+  // ---------- ASANA (client-side PAT quick send) ----------
   asanaOpenBtn.onclick = () => {
     asanaTokenEl.value   = sessionStorage.getItem("asana_pat") || "";
     asanaProjectEl.value = sessionStorage.getItem("asana_pid") || "";
@@ -438,12 +403,7 @@
     if (!token || !projectId){ asanaMsg.textContent="Token and Project ID required."; return; }
     sessionStorage.setItem("asana_pat", token);
     sessionStorage.setItem("asana_pid", projectId);
-    const summary = {
-      branch: state.branch,
-      packagingTypes: state.packagingTypes,
-      answers: state.answers,
-      transcript_tail: state.transcript.slice(-4000)
-    };
+    const summary = { branch: state.branch, packagingTypes: state.packagingTypes, answers: state.answers, transcript_tail: state.transcript.slice(-4000) };
     try{
       const resp = await fetch("https://app.asana.com/api/1.0/tasks", {
         method:"POST",
@@ -453,25 +413,80 @@
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
       asanaMsg.textContent = `Task created: ${data?.data?.gid || "OK"}`;
-    } catch(e){ asanaMsg.textContent = `Asana error: ${e.message}`; }
+    }catch(e){ asanaMsg.textContent = `Asana error: ${e.message}`; }
   };
 
-  // ---------- HELP ----------
-  openHelpBtn.onclick = () => helpModal.classList.add("show");
-  helpClose.onclick = () => helpModal.classList.remove("show");
+  // ---------- FLOW ----------
+  function buildInitialQueue(){ state.queue = [entryQuestion]; }
+  function humanSectionFor(q){
+    if (q.id==="entry-branch") return "Brief Type";
+    if (q.id==="pkg-types") return "Packaging Type(s)";
+    if (q.__bankName && q.__bankName!=="Product") return `Packaging → ${q.__bankName}`;
+    if (q.__bankName==="Product") return "Product";
+    return "Questions";
+  }
+
+  function renderStep(){
+    const q = state.queue[state.step];
+    if (!q){ setScreen("complete"); return; }
+    sectionTitle.textContent = humanSectionFor(q);
+    qText.textContent = q.text;
+    progress.textContent = `Step ${Math.min(state.step+1, state.queue.length)} of ${state.queue.length}`;
+    autosave.classList.remove("show");
+
+    voiceInput.value = "";
+    choicesBox.innerHTML = "";
+
+    if (q.type==="single" || q.type==="multi"){
+      (q.options||[]).forEach(opt=>{
+        const btn=document.createElement("button");
+        btn.className="choice"; btn.textContent=opt; btn.dataset.selected="false";
+        btn.onclick=()=>{
+          if (q.type==="single"){ [...choicesBox.children].forEach(c=>c.dataset.selected="false"); btn.dataset.selected="true"; }
+          else { btn.dataset.selected = (btn.dataset.selected==="true") ? "false" : "true"; }
+        };
+        choicesBox.appendChild(btn);
+      });
+    } else {
+      const hint=document.createElement("div"); hint.style.cssText="color:#a8b0c6;font-size:12px"; hint.textContent="Answer by voice or type below.";
+      choicesBox.appendChild(hint);
+    }
+  }
+
+  function advanceWith(override){
+    const q = state.queue[state.step];
+    const choiceVals = (q.type==="text") ? [] : selections();
+    const notes = (override && override.notes !== undefined) ? override.notes : voiceInput.value.trim();
+    const finalChoices = override && override.choiceLabel ? [override.choiceLabel] : choiceVals;
+    const finalNotes = (!finalChoices.length && !notes) ? "Unanswered" : notes;
+    upsertAnswer({ id:q.id, question:q.text, section:humanSectionFor(q), type:q.type, choices:finalChoices, notes:finalNotes });
+
+    if (q.id==="entry-branch"){ state.branch = Array.from(new Set([...(choiceVals||[])])); if (state.branch.includes("Packaging") && !state.queue.find(qq=>qq.id==="pkg-types")) state.queue.splice(1,0,packagingTypeQuestion); }
+    if (q.id==="pkg-types"){ state.packagingTypes = choiceVals; // inject banks
+      // remove any previous banks
+      state.queue = state.queue.filter(x => !x.__bankName || x.__bankName==="Product" || x.id==="pkg-types" || x.id==="entry-branch");
+      const inserts=[]; state.packagingTypes.forEach(n => (BANK[n]||[]).forEach(it=>inserts.push({...it,__bankName:n})));
+      const idx = state.queue.findIndex(x=>x.id==="pkg-types"); state.queue.splice(idx+1,0,...inserts);
+      if (state.branch.includes("Product") && !state.queue.some(x=>x.__bankName==="Product")) BANK.Product.forEach(it=>state.queue.push({...it,__bankName:"Product"}));
+    }
+
+    state.step++;
+    if (state.step >= state.queue.length) setScreen("complete"); else renderStep();
+  }
+
+  nextBtn.onclick = () => advanceWith();
+  skipBtn.onclick = () => advanceWith({ choiceLabel:"Skip", notes:"" });
+  naBtn.onclick   = () => advanceWith({ choiceLabel:"Not applicable", notes:"" });
+  backBtn.onclick = () => { if (state.step>0){ state.step--; renderStep(); } };
 
   // ---------- START ----------
   startBtn.onclick = () => {
-    resetDraft();
-    state.startedAt = new Date().toISOString();
+    state = { startedAt:new Date().toISOString(), branch:null, packagingTypes:[], answers:[], transcript:"", queue:[], step:0 };
     buildInitialQueue();
     setScreen("questions");
     renderStep();
     initSpeech();
-    startListening(); // auto-start on Start
+    startListening(); // auto start
   };
 
-  // ---------- HELPERS ----------
-  function debounce(fn, wait){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), wait); }; }
-  function escapeHtml(str){ return str.replace(/[&<>'"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 })();
