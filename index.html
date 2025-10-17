@@ -1,106 +1,113 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>LR Paris Brief Tool</title>
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
   <div id="app">
-    <!-- Welcome -->
-    <section id="welcome-screen" class="screen active">
-      <h1 class="brand">LR Paris Brief Tool</h1>
+    <!-- Masthead + Always-on Instructions -->
+    <header class="masthead">
+      <div class="brandline">
+        <div class="logo-dot"></div>
+        <div class="brand">LR Paris Brief Tool</div>
+        <div class="spacer"></div>
+        <div id="record-pill" class="pill pill-live">● Recording</div>
+        <button id="toggle-mic" class="btn btn-quiet" aria-pressed="true" title="Start/Stop microphone">Stop Recording</button>
+      </div>
 
-      <div class="card">
-        <h2>Instructions</h2>
-        <ol class="steps">
-          <li>Press <b>Start</b> — the microphone begins (Chrome/Edge recommended).</li>
-          <li>Answer by voice <i>or</i> by clicking. Recording never stops while you click.</li>
-          <li>First choose <b>Product</b> and/or <b>Packaging</b>.</li>
-          <li>If you choose <b>Packaging</b>, select all formats you need (multi-select). You’ll only be asked follow-ups for those.</li>
-          <li>Export to <b>JSON</b>/<b>PDF</b> at the end or send to <b>Asana</b> (client-side PAT for now).</li>
-        </ol>
-
-        <div class="kbd-wrap">
-          <div class="kbd-title">Voice commands (say any time):</div>
-          <div class="kbd"><span>“next”</span> <span>“continue”</span> <span>“next question”</span> → Continue</div>
-          <div class="kbd"><span>“back”</span> <span>“previous”</span> → Back</div>
-          <div class="kbd"><span>“skip”</span> → Skip</div>
-          <div class="kbd"><span>“not applicable”</span> <span>“N A”</span> → Not applicable</div>
-          <div class="kbd"><span>“stop recording”</span> / <span>“start recording”</span> → Toggle mic</div>
+      <!-- YOUR ORIGINAL INSTRUCTIONS GO HERE -->
+      <div class="instructions">
+        <div class="inst-title">Instructions</div>
+        <div id="instructions-content">
+          <!-- Paste your old instructions (HTML allowed). Example defaults below: -->
+          <ol>
+            <li>Press <b>Start</b> to begin (Chrome/Edge recommended). The microphone runs continuously while you click.</li>
+            <li>Answer by <b>voice</b> or by <b>clicking</b>. Recording never stops when you tap options.</li>
+            <li>First choose <b>Product</b> and/or <b>Packaging</b>. If Packaging, select all formats you need (multi-select).</li>
+            <li>You’ll only be asked follow-ups for selected formats. Export to JSON/PDF or send to Asana at the end.</li>
+          </ol>
+          <div class="vcmds">
+            <div class="vcmds-title">Voice commands</div>
+            <div class="vcmd-row"><span>next</span><span>continue</span><span>next question</span> → Continue</div>
+            <div class="vcmd-row"><span>back</span><span>previous</span> → Back</div>
+            <div class="vcmd-row"><span>skip</span> → Skip</div>
+            <div class="vcmd-row"><span>not applicable</span><span>N A</span> → Not applicable</div>
+            <div class="vcmd-row"><span>start recording</span><span>stop recording</span> → Toggle mic</div>
+          </div>
         </div>
 
-        <button id="start-btn" class="btn btn-primary">Start</button>
-        <div class="note">Free browser speech recognition. Best in Chrome/Edge.</div>
+        <!-- Inline editor to restore your exact copy without code changes -->
+        <details id="edit-inst" class="inst-editor">
+          <summary>Edit Instructions (optional)</summary>
+          <textarea id="inst-textarea" spellcheck="false"></textarea>
+          <div class="row">
+            <button id="inst-reset" class="btn btn-ghost">Reset</button>
+            <button id="inst-save" class="btn btn-primary">Save Instructions</button>
+          </div>
+        </details>
+      </div>
+    </header>
+
+    <!-- Welcome -->
+    <section id="welcome-screen" class="screen active">
+      <div class="panel hero">
+        <div class="hero-copy">
+          <h1>Start a new brief</h1>
+          <p>Create a Product or Packaging brief with voice or taps. Autosaves locally. Export or send to Asana.</p>
+          <div class="cta">
+            <button id="start-btn" class="btn btn-primary">Start</button>
+            <div class="subtle">Best in Chrome/Edge • Free browser speech recognition</div>
+          </div>
+        </div>
       </div>
     </section>
 
     <!-- Questions -->
     <section id="question-screen" class="screen">
-      <header class="topbar">
-        <div class="dot-live" id="dot-live">● Recording</div>
-        <div id="progress"></div>
-        <div class="topbar-right">
-          <button id="toggle-mic" class="btn btn-ghost sm" aria-pressed="true">Stop Recording</button>
-          <button id="open-help" class="btn btn-ghost sm">Instructions</button>
-          <div id="autosave">Saved</div>
+      <div class="panel">
+        <div class="panel-header">
+          <div class="section-kicker" id="section-title">Section</div>
+          <div class="progressline">
+            <div id="progress"></div>
+            <div id="autosave" class="autosave">Saved</div>
+          </div>
         </div>
-      </header>
 
-      <div class="card qcard">
-        <div id="section-title" class="section-title">Section</div>
-        <h2 id="question-text">Question</h2>
-        <div id="choices" class="choices"></div>
-        <textarea id="voice-input" placeholder="Speak… (transcript appears here). You can also type."></textarea>
+        <div class="qwrap">
+          <h2 id="question-text">Question</h2>
+          <div id="choices" class="choices"></div>
+          <textarea id="voice-input" placeholder="Speak… (transcript appears here). You can also type."></textarea>
+        </div>
+
+        <div class="controls">
+          <button id="back-btn" class="btn btn-ghost">Back</button>
+          <div class="spacer"></div>
+          <button id="skip-btn" class="btn btn-ghost">Skip</button>
+          <button id="na-btn" class="btn btn-ghost">Not applicable</button>
+          <button id="next-btn" class="btn btn-primary">Continue</button>
+        </div>
       </div>
-
-      <footer class="bottombar">
-        <button id="back-btn" class="btn btn-ghost">Back</button>
-        <div class="spacer"></div>
-        <button id="skip-btn" class="btn btn-ghost">Skip</button>
-        <button id="na-btn" class="btn btn-ghost">Not applicable</button>
-        <button id="next-btn" class="btn btn-primary">Continue</button>
-      </footer>
     </section>
 
     <!-- Complete -->
     <section id="completion-screen" class="screen">
-      <h2>Brief Complete</h2>
-      <p>Your selections and transcript are ready.</p>
-      <div class="actions">
-        <button id="export-json" class="btn btn-primary">Export JSON</button>
-        <button id="export-pdf" class="btn btn-ghost" title="Simple PDF summary">Export PDF</button>
-        <button id="asana-open" class="btn btn-ghost">Send to Asana (no server)</button>
-        <button id="restart" class="btn btn-ghost">Start Over</button>
-      </div>
-      <div class="small-note">
-        Asana (no-server) uses a temporary Personal Access Token you paste. For production OAuth, add a tiny backend later.
+      <div class="panel">
+        <h2>Brief Complete</h2>
+        <p>Your selections and transcript are ready.</p>
+        <div class="actions">
+          <button id="export-json" class="btn btn-primary">Export JSON</button>
+          <button id="export-pdf" class="btn btn-ghost" title="Simple PDF summary">Export PDF</button>
+          <button id="asana-open" class="btn btn-ghost">Send to Asana (no server)</button>
+          <button id="restart" class="btn btn-ghost">Start Over</button>
+        </div>
+        <div class="small-note">
+          Asana (no-server) uses a temporary Personal Access Token you paste. For production OAuth, add a tiny backend later.
+        </div>
       </div>
     </section>
-  </div>
-
-  <!-- Help / Instructions Modal -->
-  <div id="help-modal" class="modal">
-    <div class="modal-card">
-      <h3>Instructions</h3>
-      <ol class="steps">
-        <li>Answer by voice or click. Recording never stops while you click.</li>
-        <li>Choose <b>Product</b> and/or <b>Packaging</b>. If Packaging, select all formats you need (multi-select).</li>
-        <li>Only relevant follow-ups are asked. Use voice commands to navigate.</li>
-      </ol>
-      <div class="kbd-wrap">
-        <div class="kbd-title">Voice commands:</div>
-        <div class="kbd"><span>“next”</span> <span>“continue”</span> <span>“next question”</span> → Continue</div>
-        <div class="kbd"><span>“back”</span> <span>“previous”</span> → Back</div>
-        <div class="kbd"><span>“skip”</span> → Skip</div>
-        <div class="kbd"><span>“not applicable”</span> <span>“N A”</span> → Not applicable</div>
-        <div class="kbd"><span>“stop recording”</span> / <span>“start recording”</span> → Toggle mic</div>
-      </div>
-      <div class="row">
-        <button id="help-close" class="btn btn-primary">Close</button>
-      </div>
-    </div>
   </div>
 
   <!-- Asana Modal -->
