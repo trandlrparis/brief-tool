@@ -8,69 +8,111 @@
 </head>
 <body>
   <div id="app">
-    <!-- Screen: Welcome / Instructions -->
+    <!-- Welcome -->
     <section id="welcome-screen" class="screen active">
-      <h1>LR Paris Brief Tool</h1>
-      <p class="lead">
-        Record by voice or click multiple-choice. Choose <b>Product</b> or <b>Packaging</b>.
-        If Packaging, pick all the formats you need; only those follow-ups will be asked.
-        Recording never stops while you click.
-      </p>
-      <button id="start-btn" class="primary">Start</button>
-      <div class="note">Best in Chrome/Edge. This variant uses free browser speech recognition.</div>
+      <h1 class="brand">LR Paris Brief Tool</h1>
+
+      <div class="card">
+        <h2>Instructions</h2>
+        <ol class="steps">
+          <li>Press <b>Start</b> — the microphone begins (Chrome/Edge recommended).</li>
+          <li>Answer by voice <i>or</i> by clicking. Recording never stops while you click.</li>
+          <li>First choose <b>Product</b> and/or <b>Packaging</b>.</li>
+          <li>If you choose <b>Packaging</b>, select all formats you need (multi-select). You’ll only be asked follow-ups for those.</li>
+          <li>Export to <b>JSON</b>/<b>PDF</b> at the end or send to <b>Asana</b> (client-side PAT).</li>
+        </ol>
+
+        <div class="kbd-wrap">
+          <div class="kbd-title">Voice commands (say any time):</div>
+          <div class="kbd"><span>“next”</span> <span>“continue”</span> <span>“next question”</span> → Continue</div>
+          <div class="kbd"><span>“back”</span> <span>“previous”</span> → Back</div>
+          <div class="kbd"><span>“skip”</span> → Skip</div>
+          <div class="kbd"><span>“not applicable”</span> <span>“N A”</span> → Not applicable</div>
+        </div>
+
+        <button id="start-btn" class="btn btn-primary">Start</button>
+        <div class="note">Free browser speech recognition. Best in Chrome/Edge.</div>
+      </div>
     </section>
 
-    <!-- Screen: Questions -->
+    <!-- Questions -->
     <section id="question-screen" class="screen">
       <header class="topbar">
-        <div id="rec-indicator">● Recording</div>
+        <div class="dot-live">● Recording</div>
         <div id="progress"></div>
-        <div id="autosave">Saved</div>
+        <div class="topbar-right">
+          <button id="open-help" class="btn btn-ghost sm">Instructions</button>
+          <div id="autosave">Saved</div>
+        </div>
       </header>
 
-      <div id="qwrap">
+      <div class="card qcard">
+        <div id="section-title" class="section-title">Section</div>
         <h2 id="question-text">Question</h2>
         <div id="choices" class="choices"></div>
-        <textarea id="voice-input" placeholder="Speak… (live transcript appears here). You can also type."></textarea>
+        <textarea id="voice-input" placeholder="Speak… (transcript appears here). You can also type."></textarea>
       </div>
 
       <footer class="bottombar">
-        <button id="back-btn" class="ghost">Back</button>
-        <button id="skip-btn" class="ghost">Skip</button>
-        <button id="next-btn" class="primary" disabled>Next</button>
+        <button id="back-btn" class="btn btn-ghost">Back</button>
+        <div class="spacer"></div>
+        <button id="skip-btn" class="btn btn-ghost">Skip</button>
+        <button id="na-btn" class="btn btn-ghost">Not applicable</button>
+        <button id="next-btn" class="btn btn-primary">Continue</button>
       </footer>
     </section>
 
-    <!-- Screen: Complete -->
+    <!-- Complete -->
     <section id="completion-screen" class="screen">
       <h2>Brief Complete</h2>
       <p>Your selections and transcript are ready.</p>
       <div class="actions">
-        <button id="export-json" class="primary">Export JSON</button>
-        <button id="export-pdf" class="ghost" title="Simple PDF summary from this page">Export PDF</button>
-        <button id="asana-open" class="ghost">Send to Asana (no server)</button>
-        <button id="restart" class="ghost">Start Over</button>
+        <button id="export-json" class="btn btn-primary">Export JSON</button>
+        <button id="export-pdf" class="btn btn-ghost" title="Simple PDF summary">Export PDF</button>
+        <button id="asana-open" class="btn btn-ghost">Send to Asana (no server)</button>
+        <button id="restart" class="btn btn-ghost">Start Over</button>
       </div>
       <div class="small-note">
-        Asana (no-server) uses a temporary Personal Access Token you paste here.
-        For production OAuth, you’ll want a tiny backend later.
+        Asana (no-server) uses a temporary Personal Access Token you paste. For production OAuth, add a tiny backend later.
       </div>
     </section>
+  </div>
+
+  <!-- Help / Instructions Modal -->
+  <div id="help-modal" class="modal">
+    <div class="modal-card">
+      <h3>Instructions</h3>
+      <ol class="steps">
+        <li>Answer by voice or click. Recording never stops while you click.</li>
+        <li>Choose <b>Product</b> and/or <b>Packaging</b>. If Packaging, select all formats you need (multi-select).</li>
+        <li>Only relevant follow-ups are asked. Use voice commands to navigate.</li>
+      </ol>
+      <div class="kbd-wrap">
+        <div class="kbd-title">Voice commands:</div>
+        <div class="kbd"><span>“next”</span> <span>“continue”</span> <span>“next question”</span> → Continue</div>
+        <div class="kbd"><span>“back”</span> <span>“previous”</span> → Back</div>
+        <div class="kbd"><span>“skip”</span> → Skip</div>
+        <div class="kbd"><span>“not applicable”</span> <span>“N A”</span> → Not applicable</div>
+      </div>
+      <div class="row">
+        <button id="help-close" class="btn btn-primary">Close</button>
+      </div>
+    </div>
   </div>
 
   <!-- Asana Modal -->
   <div id="asana-modal" class="modal">
     <div class="modal-card">
-      <h3>Asana Quick Send (Client-Side)</h3>
-      <label>Personal Access Token (temporary, will be kept in this tab only)</label>
+      <h3>Asana Quick Send</h3>
+      <label>Personal Access Token</label>
       <input id="asana-token" type="password" placeholder="pat_xxx…"/>
-      <label>Project ID (where to create the task)</label>
-      <input id="asana-project" type="text" placeholder="e.g., 1201234567890"/>
+      <label>Project ID</label>
+      <input id="asana-project" type="text" placeholder="1201234567890"/>
       <label>Task Name</label>
-      <input id="asana-task-name" type="text" placeholder="Packaging Brief – Client X"/>
+      <input id="asana-task-name" type="text" placeholder="Brief – Client X"/>
       <div class="row">
-        <button id="asana-cancel" class="ghost">Cancel</button>
-        <button id="asana-send" class="primary">Create Task</button>
+        <button id="asana-cancel" class="btn btn-ghost">Cancel</button>
+        <button id="asana-send" class="btn btn-primary">Create Task</button>
       </div>
       <div id="asana-msg" class="small-note"></div>
     </div>
