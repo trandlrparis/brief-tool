@@ -1,495 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Project Brief Assistant</title>
-
-  <!-- Tailwind -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:16px}</style>
-
-  <!-- React UMD -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-
-  <!-- Babel (compile JSX) -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <!-- Lucide (icons) -->
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
-
-  <!-- jsPDF (PDF) -->
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-
-  <!-- JSZip + FileSaver (ZIP packaging) -->
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LR Paris Brief Tool</title>
+  <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="app">
+    <!-- Screen: Welcome / Instructions -->
+    <section id="welcome-screen" class="screen active">
+      <h1>LR Paris Brief Tool</h1>
+      <p class="lead">
+        Record by voice or click multiple-choice. Choose <b>Product</b> or <b>Packaging</b>.
+        If Packaging, pick all the formats you need; only those follow-ups will be asked.
+        Recording never stops while you click.
+      </p>
+      <button id="start-btn" class="primary">Start</button>
+      <div class="note">Best in Chrome/Edge. This variant uses free browser speech recognition.</div>
+    </section>
 
-  <script type="text/babel" data-presets="env,react">
-    const {useState,useEffect,useRef} = React;
-    const BUILD = "brief-tool v1.5 (zip+dates+red answers+product-types)"; console.log(BUILD);
+    <!-- Screen: Questions -->
+    <section id="question-screen" class="screen">
+      <header class="topbar">
+        <div id="rec-indicator">● Recording</div>
+        <div id="progress"></div>
+        <div id="autosave">Saved</div>
+      </header>
 
-    /* Error guard */
-    class ErrorBoundary extends React.Component {
-      constructor(p){ super(p); this.state={hasError:false, err:null}; }
-      static getDerivedStateFromError(error){ return {hasError:true, err:error}; }
-      componentDidCatch(error, info){ console.error('UI Error:', error, info); }
-      render(){
-        if(!this.state.hasError) return this.props.children;
-        return (
-          <div className="min-h-screen bg-red-50 flex items-center justify-center p-4">
-            <div className="bg-white border border-red-200 rounded-xl shadow p-6 max-w-xl w-full">
-              <h2 className="text-xl font-semibold text-red-700 mb-2">Something went wrong</h2>
-              <pre className="text-xs bg-red-50 border border-red-100 p-3 rounded overflow-auto">{String(this.state.err || '')}</pre>
-            </div>
-          </div>
-        );
-      }
-    }
+      <div id="qwrap">
+        <h2 id="question-text">Question</h2>
+        <div id="choices" class="choices"></div>
+        <textarea id="voice-input" placeholder="Speak… (live transcript appears here). You can also type."></textarea>
+      </div>
 
-    /* Lucide UMD map */
-    const L = (window.lucide && window.lucide.icons) || {};
-    const Icons = {
-      Mic: L['mic'], MicOff: L['mic-off'], Upload: L['upload'], Download: L['download'],
-      Edit2: L['edit-2'], ChevronRight: L['chevron-right'], FileText: L['file-text'],
-      Check: L['check'], Keyboard: L['keyboard'], HelpCircle: L['help-circle'], List: L['list-ordered'],
-      RotateCcw: L['rotate-ccw'], FileUp: L['file-up'], Archive: L['archive']
-    };
-    function Icon({icon:IconDef, ...props}){ if(!IconDef) return null; try { return <span dangerouslySetInnerHTML={{__html: IconDef.toSvg(props)}}/>; } catch { return null; } }
+      <footer class="bottombar">
+        <button id="back-btn" class="ghost">Back</button>
+        <button id="skip-btn" class="ghost">Skip</button>
+        <button id="next-btn" class="primary" disabled>Next</button>
+      </footer>
+    </section>
 
-    /* Questions */
-    const questions = [
-      { id:'jobNumber', category:'Basic Info', text:'What is the job number?' },
-      { id:'clientName', category:'Basic Info', text:'What is the client name?' },
-      { id:'inHandDate', category:'Timeline', text:'What is the in-hand date?' },
-      { id:'meetingDate', category:'Timeline', text:'What is the meeting or launch date, if applicable?' },
-      { id:'productTypes', category:'Product Overview', text:'What product types are needed? Custom, ASI, Collection, or a mix?' },
-      { id:'specifications', category:'Product Overview', text:'What are the sizes, materials, finishing, and quantities?' },
-      { id:'productReferences', category:'Product Overview', text:'Do you have any product references, such as images, links, or prior projects?' },
-      { id:'budget', category:'Budget', text:"What is the client's budget or expected range?" },
-      { id:'targetAudience', category:'Target Audience', text:'Who is receiving the product? Please describe age, gender, income, and region.' },
-      { id:'audienceProfile', category:'Target Audience', text:'What are they like? For example, are they hard to impress, design-savvy, or traditional?' },
-      { id:'desiredEmotion', category:'Target Audience', text:'What emotion or impression should this product create?' },
-      { id:'projectPurpose', category:'Purpose & Client Story', text:'What is the purpose of the project? For example, is it for an event, internal use, thank-you gift, brand statement, or RFP?' },
-      { id:'clientMessage', category:'Purpose & Client Story', text:'What message or story is the client trying to tell?' },
-      { id:'backstory', category:'Purpose & Client Story', text:"What's the backstory or urgency behind this request?" },
-      { id:'painPoints', category:'Purpose & Client Story', text:"What are the client's pain points?" },
-      { id:'brandAssets', category:'Design Direction', text:'Do you have brand guidelines or logo vector files?' },
-      { id:'moodBoard', category:'Design Direction', text:'Do you need a mood board? Any inspiration links or style references?' },
-      { id:'colorPalette', category:'Design Direction', text:'What is the preferred color palette or Pantone references?' },
-      { id:'logoPlacement', category:'Design Direction', text:'What are the logo usage and placement instructions?' },
-      { id:'logoPreference', category:'Design Direction', text:'Should the logo be subtle and discreet, or obvious and front-and-center?' },
-      { id:'flexibility', category:'Design Direction', text:'What is flexible versus fixed creatively?' },
-      { id:'packaging', category:'Packaging & Fulfillment', text:'Are there special packaging needs, such as luxury box, retail-ready, or kitting?' },
-      { id:'shipping', category:'Packaging & Fulfillment', text:'Is there multi-destination shipping or regional requirements?' },
-      { id:'fulfillment', category:'Packaging & Fulfillment', text:'Will you handle fulfillment, or does the client have vendors?' },
-      { id:'packingInstructions', category:'Packaging & Fulfillment', text:'Are there specific packing instructions, such as everything on a pallet or six items in one box?' },
-      { id:'labelInstructions', category:'Packaging & Fulfillment', text:'Are there specific label instructions, for example for Europe or toys?' },
-      { id:'agreements', category:'Shipping & Compliance', text:'Do you need to sign any agreement, such as an MSA or contract?' },
-      { id:'shippingLocation', category:'Shipping & Compliance', text:'Is this domestic or international shipping?' },
-      { id:'incoterm', category:'Shipping & Compliance', text:'What is the incoterm? FOB, DDP, or EXW?' },
-      { id:'shippingType', category:'Shipping & Compliance', text:'What type of shipping is needed? By air or boat?' },
-      { id:'qc', category:'Shipping & Compliance', text:'Do you need external QC, such as SGS? What level of QC is needed?' },
-      { id:'routingGuides', category:'Shipping & Compliance', text:'Are there any routing guides or platforms, such as FedEx Freight, Ariba, or SAP?' },
-      { id:'compliance', category:'Shipping & Compliance', text:"Are there any compliance risks, such as food, pharma, children's items, or legal considerations?" },
-      { id:'earlyInvolvement', category:'Shipping & Compliance', text:'Do you need early legal or production team involvement?' },
-      { id:'decisionMaker', category:'Decision Making', text:'Is your contact the decision maker and the one approving invoices?' }
-    ];
+    <!-- Screen: Complete -->
+    <section id="completion-screen" class="screen">
+      <h2>Brief Complete</h2>
+      <p>Your selections and transcript are ready.</p>
+      <div class="actions">
+        <button id="export-json" class="primary">Export JSON</button>
+        <button id="export-pdf" class="ghost" title="Simple PDF summary from this page">Export PDF</button>
+        <button id="asana-open" class="ghost">Send to Asana (no server)</button>
+        <button id="restart" class="ghost">Start Over</button>
+      </div>
+      <div class="small-note">
+        Asana (no-server) uses a temporary Personal Access Token you paste here.
+        For production OAuth, you’ll want a tiny backend later.
+      </div>
+    </section>
+  </div>
 
-    /* Product Types (checkbox + voice) */
-    const PRODUCT_CHOICES = ['Custom','ASI','Collection','Mix'];
-    const detectProductTypesFromText = (t) => {
-      const s = (t||'').toLowerCase();
-      const sel = new Set();
-      if(/\bcustom(s)?\b/.test(s)) sel.add('Custom');
-      if(/\basi\b/.test(s)) sel.add('ASI');
-      if(/\bcollection(s)?\b/.test(s)) sel.add('Collection');
-      if(/\bmix(ed)?\b/.test(s)) sel.add('Mix');
-      // If ≥2 picked and 'Mix' not said, add Mix implicitly
-      if(sel.size >= 2) sel.add('Mix');
-      return [...sel];
-    };
+  <!-- Asana Modal -->
+  <div id="asana-modal" class="modal">
+    <div class="modal-card">
+      <h3>Asana Quick Send (Client-Side)</h3>
+      <label>Personal Access Token (temporary, will be kept in this tab only)</label>
+      <input id="asana-token" type="password" placeholder="pat_xxx…"/>
+      <label>Project ID (where to create the task)</label>
+      <input id="asana-project" type="text" placeholder="e.g., 1201234567890"/>
+      <label>Task Name</label>
+      <input id="asana-task-name" type="text" placeholder="Packaging Brief – Client X"/>
+      <div class="row">
+        <button id="asana-cancel" class="ghost">Cancel</button>
+        <button id="asana-send" class="primary">Create Task</button>
+      </div>
+      <div id="asana-msg" class="small-note"></div>
+    </div>
+  </div>
 
-    /* Text cleanup (no number punctuation changes) */
-    const fillerRE = /\b(um+|uh+|erm+|you know,?)\b/gi; // removed "like" to avoid harming legit phrases
-    const multiSpaceRE = /\s{2,}/g;
-    function stripSpelledOutTrailing(text){
-      return text.replace(/([A-Za-z][A-Za-z'’\-]+\s+[A-Za-z][A-Za-z'’\-]+)\s*,?\s*(?:\b([A-Za-z])\b[\s,\-]*){2,}(\.)?/g, '$1$3');
-    }
-    function cleanTranscript(s){
-      if(!s) return s;
-      let t = s;
-      t = stripSpelledOutTrailing(t);
-      t = t.replace(fillerRE,'').replace(multiSpaceRE,' ').trim();
-      return t;
-    }
-    function conciseStyle(s){
-      if(!s) return s;
-      return cleanTranscript(s)
-        .replace(/\b(I think|we believe|sort of|kind of|basically|actually)\b/gi,'')
-        .replace(/\s{2,}/g,' ')
-        .replace(/\s*,\s*/g, ', ')
-        .replace(/\s*\.\s*/g, '. ')
-        .replace(/,\s*and\b/gi, ' and')
-        .trim();
-    }
-    function polishedStyle(s){
-      const base = conciseStyle(s);
-      if(!base) return base;
-      // No em-dash injection to avoid affecting numbers like 250-7692
-      const out = base.replace(/(^|[.!?]\s+)([a-z])/g, (m,p,chr)=>p+chr.toUpperCase());
-      return out;
-    }
-    async function rewriteLocal(text, mode){
-      if(mode==='concise') return conciseStyle(text);
-      if(mode==='polished') return polishedStyle(text);
-      return cleanTranscript(text);
-    }
-    async function rewriteWithAI(text, mode){ return rewriteLocal(text, mode); }
-
-    /* Date parsing & formatting (MM/DD/YY) */
-    function two(n){ return String(n).padStart(2,'0'); }
-    function toMMDDYY(d){
-      const yr = d.getFullYear()%100;
-      return `${two(d.getMonth()+1)}/${two(d.getDate())}/${two(yr)}`;
-    }
-    function parseHumanDate(input){
-      if(!input) return '';
-      const s = input.trim().toLowerCase();
-      const now = new Date();
-      if(/^(today)$/.test(s)) return toMMDDYY(now);
-      if(/^(tomorrow)$/.test(s)) { const d = new Date(now); d.setDate(d.getDate()+1); return toMMDDYY(d); }
-      if(/(a|one)\s+week\s+from\s+today|in\s+a\s+week|next\s+week/.test(s)){ const d=new Date(now); d.setDate(d.getDate()+7); return toMMDDYY(d); }
-      const m = s.match(/in\s+(\d+)\s+day/);
-      if(m){ const d=new Date(now); d.setDate(d.getDate()+parseInt(m[1],10)); return toMMDDYY(d); }
-      // Fallback: Date.parse
-      const parsed = Date.parse(input);
-      if(!isNaN(parsed)){ return toMMDDYY(new Date(parsed)); }
-      return input; // if unrecognized, return original
-    }
-
-    /* PDF session embed/extract */
-    const SESSION_BEGIN = '%%BRIEF-SESSION-BEGIN%%';
-    const SESSION_END   = '%%BRIEF-SESSION-END%%';
-    function appendSessionToPdfBlob(pdfBlob, sessionObj){
-      return new Promise((resolve,reject)=>{
-        const fr = new FileReader();
-        fr.onload = () => {
-          try{
-            const pdfBytes = new Uint8Array(fr.result);
-            const sessionJson = JSON.stringify(sessionObj);
-            const sessionB64 = btoa(unescape(encodeURIComponent(sessionJson)));
-            const trailerStr = `\n${SESSION_BEGIN}\n${sessionB64}\n${SESSION_END}\n`;
-            const trailerBytes = new TextEncoder().encode(trailerStr);
-            const merged = new Uint8Array(pdfBytes.length + trailerBytes.length);
-            merged.set(pdfBytes,0); merged.set(trailerBytes,pdfBytes.length);
-            resolve(new Blob([merged], {type:'application/pdf'}));
-          }catch(e){ reject(e); }
-        };
-        fr.onerror = reject;
-        fr.readAsArrayBuffer(pdfBlob);
-      });
-    }
-    async function extractSessionFromPdf(file){
-      const buf = await file.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      const textTail = new TextDecoder().decode(bytes.slice(Math.max(0, bytes.length - 20000)));
-      const beginIdx = textTail.lastIndexOf(SESSION_BEGIN);
-      const endIdx = textTail.lastIndexOf(SESSION_END);
-      if(beginIdx === -1 || endIdx === -1 || endIdx <= beginIdx) return null;
-      const payload = textTail.substring(beginIdx + SESSION_BEGIN.length, endIdx).trim();
-      try{
-        const json = decodeURIComponent(escape(atob(payload)));
-        return JSON.parse(json);
-      }catch{ return null; }
-    }
-
-    /* App */
-    function App(){
-      const [started,setStarted]=useState(false);
-      const [currentQuestionIndex,setCurrentQuestionIndex]=useState(0);
-      const [answers,setAnswers]=useState({});
-      const [isListening,setIsListening]=useState(false);
-      const [transcript,setTranscript]=useState('');
-      const [uploadedFiles,setUploadedFiles]=useState([]); // File[]
-      const [completed,setCompleted]=useState(false);
-      const [inputMode,setInputMode]=useState('voice');
-      const [speechSupported,setSpeechSupported]=useState(false);
-      const [style,setStyle]=useState('polished'); // 'raw'|'concise'|'polished'
-      const [jumpTo,setJumpTo]=useState('');
-      const [productTypesSel, setProductTypesSel] = useState([]); // for productTypes UI
-
-      const recognitionRef=useRef(null);
-      const lastAdvanceRef=useRef(0);
-      const lastResultAtRef=useRef(Date.now());
-
-      /* Speech setup with auto-restart */
-      useEffect(()=>{
-        const isSupported='webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
-        setSpeechSupported(isSupported);
-        if(isSupported){
-          const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-          const rec=new SR();
-          rec.continuous=true; rec.interimResults=true;
-          rec.onstart=()=>setIsListening(true);
-          rec.onresult=(ev)=>{
-            lastResultAtRef.current=Date.now();
-            let final='';
-            for(let i=ev.resultIndex;i<ev.results.length;i++){
-              if(ev.results[i].isFinal) final+=ev.results[i][0].transcript+' ';
-            }
-            if(final){
-              const cleaned=cleanTranscript(final);
-              // If on productTypes, auto-detect selections
-              if(questions[currentQuestionIndex].id === 'productTypes'){
-                const auto = detectProductTypesFromText(cleaned);
-                if(auto.length) setProductTypesSel(prev => Array.from(new Set([...prev, ...auto])));
-              }
-              setTranscript(prev=>(prev+' '+cleaned).trim());
-              checkForAdvanceCommand(cleaned);
-            }
-          };
-          rec.onerror=()=>{ setIsListening(false); if(started && !completed && inputMode==='voice') setTimeout(tryStart,700); };
-          rec.onend=()=>{ setIsListening(false); if(started && !completed && inputMode==='voice') setTimeout(tryStart,500); };
-          recognitionRef.current=rec;
-        }
-        return ()=>{ if(recognitionRef.current){ try{recognitionRef.current.stop();}catch{} } };
-      },[started,completed,inputMode,currentQuestionIndex]);
-
-      useEffect(()=>{
-        const id=setInterval(()=>{
-          if(!speechSupported) return;
-          if(!started || completed || inputMode!=='voice') return;
-          if(!isListening && (Date.now()-lastResultAtRef.current>3000)) tryStart();
-        },2000);
-        return ()=>clearInterval(id);
-      },[started,completed,inputMode,isListening,speechSupported]);
-
-      const tryStart=()=>{ const rec=recognitionRef.current; if(rec && !isListening){ try{rec.start();}catch{} } };
-      const startListening=()=>{ if(inputMode==='voice' && speechSupported) tryStart(); };
-      const stopListening=()=>{ const rec=recognitionRef.current; if(rec && isListening){ try{rec.stop();}catch{} } };
-
-      /* Voice “next” command */
-      const checkForAdvanceCommand=(text)=>{
-        const re=/\b(next(?:\s*question)?|continue|move on|skip)\b/i;
-        if(re.test(text)){ const now=Date.now(); if(now-lastAdvanceRef.current>800){ lastAdvanceRef.current=now; setTimeout(()=>handleNext(),400); } }
-      };
-
-      /* Jump to number */
-      const goToQuestion=()=>{
-        const n=parseInt(jumpTo,10);
-        if(Number.isFinite(n) && n>=1 && n<=questions.length){
-          setCurrentQuestionIndex(n-1);
-          setTranscript(answers[questions[n-1].id]||'');
-          if(questions[n-1].id==='productTypes'){
-            setProductTypesSel(fromAnswerToProductSel(answers['productTypes']));
-          }
-          window.scrollTo({top:0,behavior:'smooth'});
-          if(inputMode==='voice' && speechSupported){ stopListening(); setTimeout(startListening,300); }
-        }
-      };
-
-      /* Helpers for field-specific formatting */
-      const normalizeJobNumber = (raw) => {
-        if(!raw) return raw;
-        const digits = (raw.match(/\d/g) || []).join('');
-        if(digits.length >= 6) return digits.slice(0,6);
-        return digits || raw;
-      };
-      const normalizeDateMaybe = (id, raw) => {
-        if(!raw) return raw;
-        if(id==='inHandDate' || id==='meetingDate'){
-          return parseHumanDate(raw);
-        }
-        return raw;
-      };
-      const fromAnswerToProductSel = (ans) => {
-        if(!ans) return [];
-        const arr = String(ans).split(/[,/]| and |\s+/).map(s=>s.trim()).filter(Boolean);
-        const set = new Set();
-        arr.forEach(a=>{
-          const norm = a.toLowerCase();
-          if(norm.startsWith('custom')) set.add('Custom');
-          if(norm==='asi') set.add('ASI');
-          if(norm.startsWith('collection')) set.add('Collection');
-          if(norm.startsWith('mix')) set.add('Mix');
-        });
-        return [...set];
-      };
-
-      const handleStart=()=>{ setStarted(true); if(speechSupported && inputMode==='voice') setTimeout(startListening,500); window.scrollTo({top:0,behavior:'smooth'}); };
-
-      const handleNext=async ()=>{
-        const q = questions[currentQuestionIndex];
-        let val = transcript.trim();
-
-        // Special handling per field
-        if(q.id==='productTypes'){
-          const auto = detectProductTypesFromText(val);
-          const chosen = Array.from(new Set([...productTypesSel, ...auto]));
-          val = chosen.length ? chosen.join(', ') : val;
-        } else {
-          // Style polishing (safe)
-          val = (await rewriteWithAI(val, style))||'';
-          if(q.id==='jobNumber') val = normalizeJobNumber(val);
-          val = normalizeDateMaybe(q.id, val);
-        }
-
-        if(val){
-          setAnswers(prev=>({...prev,[q.id]:val}));
-        }
-
-        // Prepare next
-        if(currentQuestionIndex < questions.length-1){
-          const nextIndex = currentQuestionIndex + 1;
-          setCurrentQuestionIndex(nextIndex);
-          setTranscript('');
-          if(questions[nextIndex].id==='productTypes'){
-            setProductTypesSel(fromAnswerToProductSel(answers['productTypes']));
-          }
-          window.scrollTo({top:0,behavior:'smooth'});
-          if(inputMode==='voice'){ stopListening(); setTimeout(startListening,300); }
-        }else{
-          stopListening(); setCompleted(true); window.scrollTo({top:0,behavior:'smooth'});
-        }
-      };
-
-      const handleSkip=()=>{ 
-        if(currentQuestionIndex<questions.length-1){ 
-          const nextIndex = currentQuestionIndex+1;
-          setCurrentQuestionIndex(nextIndex); 
-          setTranscript(''); 
-          if(questions[nextIndex].id==='productTypes'){
-            setProductTypesSel(fromAnswerToProductSel(answers['productTypes']));
-          }
-          if(inputMode==='voice'){ stopListening(); setTimeout(startListening,300); } 
-        } else { 
-          stopListening(); setCompleted(true); 
-        } 
-      };
-
-      const handleEditQuestion=(qid)=>{ 
-        const idx=questions.findIndex(q=>q.id===qid); if(idx<0)return; 
-        setCurrentQuestionIndex(idx); 
-        setTranscript(answers[qid]||''); 
-        if(qid==='productTypes') setProductTypesSel(fromAnswerToProductSel(answers['productTypes']));
-        setCompleted(false); 
-        window.scrollTo({top:0,behavior:'smooth'}); 
-        if(inputMode==='voice'&&speechSupported){ setTimeout(startListening,300); } 
-      };
-
-      /* Export: PDF (answers red), then optional ZIP with assets */
-      const makePDF=()=>{
-        const { jsPDF } = window.jspdf || {};
-        if(!jsPDF){ alert('PDF library not loaded.'); return null; }
-        const doc=new jsPDF({unit:'pt',format:'letter'});
-        const margin=48, width=612-2*margin;
-        let y=margin;
-        const addLines=(txt, color=null, bold=false)=>{
-          const lines=doc.splitTextToSize(txt,width);
-          if(bold) doc.setFont('Helvetica','bold'); else doc.setFont('Helvetica','normal');
-          if(color) doc.setTextColor(color[0], color[1], color[2]); else doc.setTextColor(0,0,0);
-          lines.forEach(line=>{ if(y>750){ doc.addPage(); y=margin; } doc.text(line,margin,y); y+=18; });
-          doc.setTextColor(0,0,0);
-        };
-        doc.setFont('Helvetica','bold'); doc.setFontSize(16);
-        addLines('Project Brief');
-        doc.setFont('Helvetica','normal'); doc.setFontSize(11); y+=8;
-
-        let lastCat='';
-        questions.forEach((q,i)=>{
-          if(q.category!==lastCat){ y+=8; addLines(q.category.toUpperCase(), null, true); lastCat=q.category; }
-          addLines(`${i+1}. ${q.text}`, null, false);            // question (black)
-          const ans = answers[q.id] || 'Not answered';
-          addLines(`→ ${ans}`, [220,53,69], false);               // answer (red)
-          y+=6;
-        });
-
-        if((uploadedFiles||[]).length){ y+=8; addLines('ATTACHED FILES', null, true); uploadedFiles.forEach(f=>addLines(`- ${f.name}`)); }
-
-        try{ doc.setProperties({ title:`Brief ${answers.jobNumber||''}` }); }catch{}
-        return doc;
-      };
-
-      const downloadPDF=async ()=>{
-        const doc=makePDF(); if(!doc) return;
-        const baseBlob = doc.output('blob');
-        const session = { version:1, timestamp:Date.now(), answers, fileNames:(uploadedFiles||[]).map(f=>f.name) };
-        try{
-          const finalBlob = await appendSessionToPdfBlob(baseBlob, session);
-          saveAs(finalBlob, `brief-${answers.jobNumber||'session'}.pdf`);
-        }catch(e){
-          console.error(e);
-          saveAs(baseBlob, `brief-${answers.jobNumber||'session'}.pdf`);
-        }
-      };
-
-      const downloadZip=async ()=>{
-        const zip=new JSZip();
-        // PDF
-        const doc=makePDF(); if(doc){ const pdfBlob=doc.output('blob'); const session={version:1,timestamp:Date.now(),answers,fileNames:(uploadedFiles||[]).map(f=>f.name)}; const pdfWithState = await appendSessionToPdfBlob(pdfBlob, session); zip.file(`brief-${answers.jobNumber||'session'}.pdf`, pdfWithState); }
-        // Assets
-        for(const f of (uploadedFiles||[])){ const buf=await f.arrayBuffer(); zip.file(`assets/${f.name}`, buf); }
-        const out=await zip.generateAsync({type:'blob'});
-        saveAs(out, `brief-package-${answers.jobNumber||'session'}.zip`);
-      };
-
-      /* Import PDF (with embedded session) */
-      const loadSession=(e)=>{
-        const file=(e.target && e.target.files && e.target.files[0])||null; if(!file) return;
-        const name=(file.name||'').toLowerCase();
-        if(!name.endsWith('.pdf')){ alert('Please select a PDF generated by this tool.'); return; }
-        extractSessionFromPdf(file).then((payload)=>{
-          if(payload && payload.answers){
-            setAnswers(payload.answers);
-            // Restore productTypes selection if present
-            setProductTypesSel(fromAnswerToProductSel(payload.answers['productTypes']));
-            setStarted(true);
-            setCompleted(false);
-            setCurrentQuestionIndex(0);
-            setTranscript('');
-            window.scrollTo({top:0,behavior:'smooth'});
-          }else{
-            alert('This PDF does not contain editable session data from this tool.');
-          }
-        });
-      };
-
-      const onUploadFiles=(e)=>{ const files=Array.from(e.target.files||[]); if(!files.length) return; setUploadedFiles(prev=>[...prev,...files]); };
-
-      /* UI */
-      if(!started){
-        return (
-          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl p-8 md:p-12 max-w-3xl w-full">
-              <div className="text-center mb-8">
-                <Icon icon={Icons.FileText} className="w-16 h-16 text-indigo-600 mx-auto mb-5"/>
-                <h1 className="text-4xl font-bold text-gray-900 mb-2">Project Brief Assistant</h1>
-                <p className="text-lg text-gray-600">Ask smart questions. Capture clean answers. Export beautifully.</p>
-              </div>
-
-              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-6 mb-6">
-                <h2 className="text-xl font-semibold mb-3">How it works</h2>
-                <ol className="list-decimal list-inside space-y-2 text-gray-700">
-                  <li><strong>Start Interview.</strong> Pick Voice or Text.</li>
-                  <li><strong>Answer.</strong> Keep it crisp—we do the cleanup.</li>
-                  <li><strong>Hands-free.</strong> Say “next,” “continue,” or “skip.”</li>
-                  <li><strong>Add brand files.</strong> Logos, guidelines, references.</li>
-                  <li><strong>Export.</strong> Download PDF, or ZIP with your assets.</li>
-                </ol>
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <label className="inline-flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg cursor-pointer hover:bg-gray-200">
-                    <Icon icon={Icons.FileUp} className="w-4 h-4"/> Load Previous PDF to continue making edits
-                    <input type="file" accept=".pdf" onChange={loadSession} className="hidden"/>
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex gap-2">
-                  <button onClick={()=>setInputMode('voice')}
-                          className={`px-4 py-2 rounded-lg font-semibold flex items-center gap-2 ${inputM
+  <script src="script.js"></script>
+</body>
+</html>
