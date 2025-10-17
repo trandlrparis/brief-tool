@@ -101,8 +101,8 @@ function App(){
 
   /* --- Queue build --- */
   useEffect(()=>{
-    let q=[];
     if(!started) return;
+    const q=[];
     q.push({id:"branch",text:"What kind of brief are you creating?",type:"multi",options:["Product","Packaging"]});
     if(branch.includes("Packaging")){
       q.push({id:"pkg",text:"Which type(s) of packaging?",type:"multi",options:PACKAGING_TYPES});
@@ -122,8 +122,8 @@ function App(){
     if(current.id==="pkg") setPkgTypes(a.choices||[]);
     if(step+1>=queue.length) setComplete(true); else setStep(step+1);
   };
-  const skipQ = ()=>{setStep(s=>Math.min(s+1,queue.length));};
-  const naQ = ()=>{setAnswers(p=>({...p,[current.id]:{choices:["Not Applicable"],notes:""}})); nextQ();};
+  const skipQ = ()=>{ setStep(s=>Math.min(s+1,queue.length)); };
+  const naQ = ()=>{ setAnswers(p=>({...p,[current.id]:{choices:["Not Applicable"],notes:""}})); nextQ(); };
 
   const toggle = (opt,kind)=>{
     setAnswers(p=>{
@@ -134,7 +134,6 @@ function App(){
     });
   };
 
-  /* --- Export --- */
   const exportJSON = ()=>{
     const blob=new Blob([JSON.stringify({branch,pkgTypes,answers},null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a");
