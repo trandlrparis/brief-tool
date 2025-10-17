@@ -19,7 +19,7 @@
           <li>Answer by voice <i>or</i> by clicking. Recording never stops while you click.</li>
           <li>First choose <b>Product</b> and/or <b>Packaging</b>.</li>
           <li>If you choose <b>Packaging</b>, select all formats you need (multi-select). You’ll only be asked follow-ups for those.</li>
-          <li>Export to <b>JSON</b>/<b>PDF</b> at the end or send to <b>Asana</b> (client-side PAT).</li>
+          <li>Export to <b>JSON</b>/<b>PDF</b> at the end or send to <b>Asana</b> (client-side PAT for now).</li>
         </ol>
 
         <div class="kbd-wrap">
@@ -28,6 +28,7 @@
           <div class="kbd"><span>“back”</span> <span>“previous”</span> → Back</div>
           <div class="kbd"><span>“skip”</span> → Skip</div>
           <div class="kbd"><span>“not applicable”</span> <span>“N A”</span> → Not applicable</div>
+          <div class="kbd"><span>“stop recording”</span> / <span>“start recording”</span> → Toggle mic</div>
         </div>
 
         <button id="start-btn" class="btn btn-primary">Start</button>
@@ -38,9 +39,10 @@
     <!-- Questions -->
     <section id="question-screen" class="screen">
       <header class="topbar">
-        <div class="dot-live">● Recording</div>
+        <div class="dot-live" id="dot-live">● Recording</div>
         <div id="progress"></div>
         <div class="topbar-right">
+          <button id="toggle-mic" class="btn btn-ghost sm" aria-pressed="true">Stop Recording</button>
           <button id="open-help" class="btn btn-ghost sm">Instructions</button>
           <div id="autosave">Saved</div>
         </div>
@@ -93,6 +95,7 @@
         <div class="kbd"><span>“back”</span> <span>“previous”</span> → Back</div>
         <div class="kbd"><span>“skip”</span> → Skip</div>
         <div class="kbd"><span>“not applicable”</span> <span>“N A”</span> → Not applicable</div>
+        <div class="kbd"><span>“stop recording”</span> / <span>“start recording”</span> → Toggle mic</div>
       </div>
       <div class="row">
         <button id="help-close" class="btn btn-primary">Close</button>
