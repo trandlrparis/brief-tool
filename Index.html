@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LR Paris Brief Tool</title>
+    <style>
+        :root {
+            --bg: #f7f8fa;
+            --card: #ffffff;
+            --ink: #0f172a;
+            --muted: #64748b;
+            --accent: #0ea5e9;
+            --accent-hover: #0284c7;
+            --accent-ink: #ffffff;
+            --line: #e2e8f0;
+            --ok: #10b981;
+            --danger: #ef4444;
+            --warn: #f59e0b;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+            color: var(--ink);
+            background: var(--bg);
+            line-height: 1.6;
+        }
+        
+        #app {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        
+        .screen {
+            display: none;
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        
+        .screen.active { display: block; }
+        
+        h1 {
+            font-size: 32px;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        h2 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: var(--ink);
+        }
+        
+        .lead {
+            color: var(--muted);
+            margin-bottom: 28px;
+            font-size: 16px;
+        }
+        
+        .banner {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            color: #856404;
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+        
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            border-bottom: 1px solid var(--line);
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+        
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        #rec-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        #rec-indicator.listening {
+            color: var(--danger);
+        }
+        
+        #rec-indicator.stopped {
+            color: var(--muted);
+        }
+        
+        .rec-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--muted);
+        }
+        
+        .rec-dot.active {
+            background: var(--danger);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        
+        #progress {
+            color: var(--muted);
+            font-size: 14px;
+        }
+        
+        #autosave {
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 12px;
+            color: var(--ok);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        #autosave.show {
+            opacity: 1;
+        }
+        
+        button {
+            border: none;
+            border-radius: 10px;
+            padding: 12px 20px;
+            font-weight: 600;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn-primary {
+            background: var(--accent);
+            color: var(--accent-ink);
+            box-shadow: 0 2px 4px rgba(14,165,233,0.2);
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(14,165,233,0.3);
+        }
+        
+        .btn-secondary {
+            background: white;
+            color: var(--ink);
+            border: 1px solid var(--line);
+        }
+        
+        .btn-secondary:hover:not(:disabled) {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+        
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+        
+        .btn-danger:hover:not(:disabled) {
+            background: #dc2626;
+        }
+        
+        #question-text {
+            font-size: 20px;
+            margin-bottom: 24px;
+            font-weight: 600;
+        }
+        
+        .choices {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .choice {
+            background: white;
+            border: 2px solid var(--line);
+            padding: 10px 18px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        
+        .choice:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+        }
+        
+        .choice[data-selected="true"] {
+            background: #e0f2fe;
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+        
+        .hint {
+            color: var(--muted);
+            font-size: 14px;
+            font-style: italic;
+            margin-bottom: 16px;
+        }
+        
+        #voice-input {
+            width: 100%;
+            min-height: 120px;
+            padding: 14px;
+            border: 2px solid var(--line);
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 15px;
+            resize: vertical;
+            transition: border-color 0.2s;
+        }
+        
+        #voice-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+        
+        .file-upload-area {
+            border: 2px dashed var(--line);
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            margin: 20px 0;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        
+        .file-upload-area:hover {
+            border-color: var(--accent);
+            background: #f0f9ff;
+        }
+        
+        .file-upload-area.drag-over {
+            border-color: var(--accent);
+            background: #e0f2fe;
+        }
+        
+        .file-list {
+            margin-top: 12px;
+        }
+        
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: #f8fafc;
+            border-radius: 6px;
+            margin-bottom: 6px;
+        }
+        
+        .file-item-name {
+            font-size: 14px;
+            color: var(--ink);
+        }
+        
+        .file-item-remove {
+            color: var(--danger);
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(15,23,42,0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .modal.show {
+            display: flex;
+        }
+        
+        .modal-card {
+            background: white;
+            width: 560px;
+            max-width: 92vw;
+            padding: 24px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+        }
+        
+        .modal-card h3 {
+            margin-bottom: 16px;
+            font-size: 20px;
+        }
+        
+        .modal-card label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--muted);
+            margin-bottom: 6px;
+            margin-top: 12px;
+        }
+        
+        .modal-card input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid var(--line);
+            border-radius: 8px;
+            font-size: 15px;
+        }
+        
+        .modal-card input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .completion-grid {
+            display: grid;
+            gap: 12px;
+            margin: 24px 0;
+        }
+        
+        .note {
+            color: var(--muted);
+            font-size: 14px;
+            margin-top: 12px;
+        }
+        
+        #asana-msg {
+            margin-top: 12px;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        #asana-msg.success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        #asana-msg.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .product-list {
+            margin: 20px 0;
+        }
+        
+        .product-item {
+            background: #f8fafc;
+            padding: 16px;
+            border-radius: 10px;
+            margin-bottom: 12px;
+            border: 1px solid var(--line);
+        }
+        
+        .product-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .product-item-name {
+            font-weight: 600;
+            color: var(--accent);
+        }
+        
+        @media (max-width: 640px) {
+            #app {
+                padding: 16px;
+            }
+            
+            .screen {
+                padding: 20px;
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+            
+            .actions {
+                flex-direction: column;
+            }
+            
+            button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Welcome Screen -->
+        <section id="welcome-screen" class="screen active">
+            <h1>LR Paris Brief Tool</h1>
+            <p class="lead">
+                Create detailed product and packaging briefs using voice or text input.
+                Your progress is automatically saved.
+            </p>
+            <button id="start-btn" class="btn-primary">Start New Brief</button>
+            <div class="note">
+                💡 <strong>Tip:</strong> Use Chrome, Edge, or Safari for best voice recognition support.
+            </div>
+        </section>
+
+        <!-- Questions Screen -->
+        <section id="question-screen" class="screen">
+            <div class="topbar">
+                <div class="topbar-left">
+                    <div id="rec-indicator" class="stopped">
+                        <span class="rec-dot"></span>
+                        <span id="rec-text">Mic Off</span>
+                    </div>
+                    <button id="toggle-mic-btn" class="btn-secondary">Start Recording</button>
+                </div>
+                <div id="progress">Step 0 of 0</div>
+                <div id="autosave">✓ Saved</div>
+            </div>
+
+            <div id="banner-container"></div>
+
+            <h2 id="question-text"></h2>
+            <div id="choices" class="choices"></div>
+            <textarea id="voice-input" placeholder="Speak or type your answer here..."></textarea>
+
+            <div class="actions">
+                <button id="back-btn" class="btn-secondary">← Back</button>
+                <button id="skip-btn" class="btn-secondary">Skip</button>
+                <button id="next-btn" class="btn-primary" disabled>Next →</button>
+            </div>
+
+            <div class="note">
+                🎤 <strong>Voice Commands:</strong> Say "next", "back", or "skip" to navigate. Say "stop recording" to pause mic.
+            </div>
+        </section>
+
+        <!-- Completion Screen -->
+        <section id="completion-screen" class="screen">
+            <h2>✓ Brief Complete!</h2>
+            <p class="lead">Your brief has been captured. Choose an action below:</p>
+
+            <div class="completion-grid">
+                <button id="export-json-btn" class="btn-primary">📥 Download as JSON</button>
+                <button id="export-pdf-btn" class="btn-primary">📄 Print/Save as PDF</button>
+                <button id="asana-open-btn" class="btn-secondary">📋 Send to Asana</button>
+                <button id="restart-btn" class="btn-secondary">🔄 Start Over</button>
+            </div>
+
+            <div class="note">
+                💡 You can re-upload the JSON file later to edit your answers.
+            </div>
+        </section>
+    </div>
+
+    <!-- Asana Modal -->
+    <div id="asana-modal" class="modal">
+        <div class="modal-card">
+            <h3>Send to Asana</h3>
+            <label>Personal Access Token</label>
+            <input type="password" id="asana-token" placeholder="Enter your Asana PAT">
+            
+            <label>Project ID</label>
+            <input type="text" id="asana-project" placeholder="Project GID">
+            
+            <label>Task Name</label>
+            <input type="text" id="asana-task-name" placeholder="Brief Task Name">
+            
+            <div id="asana-msg"></div>
+            
+            <div class="modal-actions">
+                <button id="asana-cancel" class="btn-secondary">Cancel</button>
+                <button id="asana-send" class="btn-primary">Send to Asana</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (() => {
+            // ========== DOM Elements ==========
+            const screens = {
+                welcome: document.getElementById("welcome-screen"),
+                questions: document.getElementById("question-screen"),
+                complete: document.getElementById("completion-screen")
+            };
+            
+            const startBtn = document.getElementById("start-btn");
+            const qText = document.getElementById("question-text");
+            const choicesBox = document.getElementById("choices");
+            const voiceInput = document.getElementById("voice-input");
+            const nextBtn = document.getElementById("next-btn");
+            const backBtn = document.getElementById("back-btn");
+            const skipBtn = document.getElementById("skip-btn");
+            const progress = document.getElementById("progress");
+            const autosaveBadge = document.getElementById("autosave");
+            const bannerContainer = document.getElementById("banner-container");
+            const toggleMicBtn = document.getElementById("toggle-mic-btn");
+            const recIndicator = document.getElementById("rec-indicator");
+            const recText = document.getElementById("rec-text");
+            const recDot = document.querySelector(".rec-dot");
+
+            const exportJSONBtn = document.getElementById("export-json-btn");
+            const exportPDFBtn = document.getElementById("export-pdf-btn");
+            const restartBtn = document.getElementById("restart-btn");
+
+            const asanaOpenBtn = document.getElementById("asana-open-btn");
+            const asanaModal = document.getElementById("asana-modal");
+            const asanaTokenEl = document.getElementById("asana-token");
+            const asanaProjectEl = document.getElementById("asana-project");
+            const asanaTaskNameEl = document.getElementById("asana-task-name");
+            const asanaCancelBtn = document.getElementById("asana-cancel");
+            const asanaSendBtn = document.getElementById("asana-send");
+            const asanaMsg = document.getElementById("asana-msg");
+
+            // ========== State ==========
+            const STORAGE_KEY = "lrp_brief_draft_v2";
+            let state = {
+                startedAt: null,
+                branch: [],
+                packagingTypes: [],
+                products: [],
+                answers: [],
+                uploadedFiles: [],
+                queue: [],
+                step: 0
+            };
+
+            let recognition = null;
+            let isListening = false;
+            let userStoppedMic = false;
+
+            // ========== Utilities ==========
+            function debounce(fn, wait) {
+                let timeout;
+                return (...args) => {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => fn(...args), wait);
+                };
+            }
+
+            function flash(el) {
+                el?.classList?.remove("show");
+                void el?.offsetWidth;
+                el?.classList?.add("show");
+                setTimeout(() => el?.classList?.remove("show"), 1000);
+            }
+
+            function download(filename, data, mime = "application/json") {
+                const blob = new Blob([data], { type: mime });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+
+            function setScreen(name) {
+                Object.values(screens).forEach(s => s.classList.remove("active"));
+                screens[name].classList.add("active");
+            }
+
+            function setProgress() {
+                const total = state.queue.length || 1;
+                const current = Math.min(state.step + 1, total);
+                progress.textContent = `Step ${current} of ${total}`;
+            }
+
+            function showBanner(msg, type = "info") {
+                bannerContainer.innerHTML = `<div class="banner">${msg}</div>`;
+            }
+
+            function pushAnswer({ id, question, type, choices, notes }) {
+                const idx = state.answers.findIndex(a => a.id === id);
+                const payload = { id, question, type, choices, notes };
+                if (idx >= 0) state.answers[idx] = payload;
+                else state.answers.push(payload);
+                saveDraft();
+            }
+
+            const saveDraft = debounce(() => {
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+                    flash(autosaveBadge);
+                } catch (e) {}
+            }, 500);
+
+            function resetDraft() {
+                state = {
+                    startedAt: null,
+                    branch: [],
+                    packagingTypes: [],
+                    products: [],
+                    answers: [],
+                    uploadedFiles: [],
+                    queue: [],
+                    step: 0
+                };
+                try {
+                    localStorage.removeItem(STORAGE_KEY);
+                } catch (e) {}
+            }
+
+            function safeLoadDraft() {
+                try {
+                    const raw = localStorage.getItem(STORAGE_KEY);
+                    if (!raw) return false;
+                    const draft = JSON.parse(raw);
+                    if (!draft || typeof draft !== "object") return false;
+                    state = { ...state, ...draft };
+                    return true;
+                } catch (e) {
+                    try {
+                        localStorage.removeItem(STORAGE_KEY);
+                    } catch (e) {}
+                    return false;
+                }
+            }
+
+            // ========== Question Bank ==========
+            const entryQuestion = {
+                id: "entry-branch",
+                text: "What kind of brief are you creating?",
+                type: "multi",
+                options: ["Product", "Packaging"]
+            };
+
+            const packagingTypeQuestion = {
+                id: "pkg-types",
+                text: "Which type(s) of packaging are you requesting?",
+                type: "multi",
+                options: [
+                    "Shopping Bag", "Rigid Box", "Foldable Box", "Sleeve",
+                    "Tube", "Pouch", "Tag / Label", "Card / Insert",
+                    "Sticker / Seal", "Other"
+                ]
+            };
+
+            const PRODUCT_BANK = [
+                { id: "prod-desc", text: "Product description", type: "text" },
+                { id: "prod-specs", text: "Key product specifications", type: "text" },
+                { id: "prod-qty", text: "Quantity (units)", type: "text" },
+                { id: "prod-target", text: "Target price (per unit or total)", type: "text" },
+                { id: "prod-date", text: "Delivery date (MMDDYY)", type: "text" },
+                { id: "prod-loc", text: "Delivery location", type: "text" },
+                { id: "prod-eco", text: "Eco-friendly requirements?", type: "single", options: ["Yes", "No", "N/A"] }
+            ];
+
+            const PACKAGING_BANKS = {
+                "Shopping Bag": [
+                    { id: "bag-material", text: "Bag material", type: "single", options: ["Paper", "Fabric", "Recycled", "Other", "Skip"] },
+                    { id: "bag-handle", text: "Handle type", type: "single", options: ["Ribbon", "Rope", "Die-cut", "None", "Skip"] },
+                    { id: "bag-print", text: "Printing", type: "multi", options: ["1-color", "Full-color", "Emboss", "Deboss", "Foil", "None", "Skip"] },
+                    { id: "bag-size", text: "Approx size (L×W×H)", type: "text" },
+                    { id: "bag-qty", text: "Quantity", type: "text" },
+                    { id: "bag-target", text: "Target price", type: "text" },
+                    { id: "bag-ship", text: "Delivery date & location", type: "text" }
+                ],
+                "Rigid Box": [
+                    { id: "rbox-style", text: "Box style", type: "single", options: ["2-piece", "Magnetic", "Drawer", "Slipcase", "Skip"] },
+                    { id: "rbox-print", text: "Printing", type: "multi", options: ["1-color", "Full-color", "Foil", "Emboss", "Deboss", "Skip"] },
+                    { id: "rbox-size", text: "Approx size (L×W×H)", type: "text" },
+                    { id: "rbox-qty", text: "Quantity", type: "text" },
+                    { id: "rbox-target", text: "Target price", type: "text" },
+                    { id: "rbox-ship", text: "Delivery date & location", type: "text" }
+                ]
+                // Add other packaging types similarly
+            };
+
+            // ========== Queue Building ==========
+            function buildQueue() {
+                const q = [];
+                q.push(entryQuestion);
+
+                if (state.branch.includes("Packaging")) {
+                    q.push(packagingTypeQuestion);
+                    state.packagingTypes.forEach(type => {
+                        const bank = PACKAGING_BANKS[type];
+                        if (bank) q.push(...bank);
+                    });
+                }
+
+                if (state.branch.includes("Product")) {
+                    q.push(...PRODUCT_BANK);
+                }
+
+                state.queue = q;
+            }
+
+            // ========== Rendering ==========
+            function renderStep() {
+                setProgress();
+                const q = state.queue[state.step];
+
+                if (!q) {
+                    setScreen("complete");
+                    stopListening(true);
+                    return;
+                }
+
+                qText.textContent = q.text;
+                voiceInput.value = "";
+                nextBtn.disabled = true;
+                choicesBox.innerHTML = "";
+
+                if (q.type === "single" || q.type === "multi") {
+                    (q.options || []).forEach(opt => {
+                        const btn = document.createElement("button");
+                        btn.className = "choice";
+                        btn.textContent = opt;
+                        btn.dataset.selected = "false";
+                        btn.onclick = () => {
+                            if (q.type === "single") {
+                                [...choicesBox.children].forEach(c => c.dataset.selected = "false");
+                                btn.dataset.selected = "true";
+                            } else {
+                                btn.dataset.selected = btn.dataset.selected === "true" ? "false" : "true";
+                            }
+                            checkNextButton();
+                        };
+                        choicesBox.appendChild(btn);
+                    });
+                } else {
+                    choicesBox.innerHTML = `<div class="hint">💬 Answer by voice or type below</div>`;
+                }
+            }
+
+            function getSelections() {
+                return [...choicesBox.querySelectorAll(".choice")]
+                    .filter(b => b.dataset.selected === "true")
+                    .map(b => b.textContent);
+            }
+
+            function checkNextButton() {
+                const q = state.queue[state.step];
+                const hasChoices = getSelections().length > 0;
+                const hasText = voiceInput.value.trim().length > 0;
+                nextBtn.disabled = !(hasChoices || hasText);
+            }
+
+            // ========== Navigation ==========
+            nextBtn.onclick = () => {
+                const q = state.queue[state.step];
+                const choices = q.type === "text" ? [] : getSelections();
+                const notes = voiceInput.value.trim();
+
+                if (!choices.length && !notes) return;
+
+                pushAnswer({
+                    id: q.id,
+                    question: q.text,
+                    type: q.type,
+                    choices,
+                    notes
+                });
+
+                if (q.id === "entry-branch") {
+                    state.branch = choices;
+                    buildQueue();
+                }
+
+                if (q.id === "pkg-types") {
+                    state.packagingTypes = choices;
+                    buildQueue();
+                }
+
+                state.step++;
+                if (state.step >= state.queue.length) {
+                    setScreen("complete");
+                    stopListening(true);
+                } else {
+                    renderStep();
+                }
+            };
+
+            backBtn.onclick = () => {
+                if (state.step > 0) {
+                    state.step--;
+                    renderStep();
+                }
+            };
+
+            skipBtn.onclick = () => {
+                const q = state.queue[state.step];
+                pushAnswer({
+                    id: q.id,
+                    question: q.text,
+                    type: q.type,
+                    choices: ["Skipped"],
+                    notes: ""
+                });
+                state.step++;
+                if (state.step >= state.queue.length) {
+                    setScreen("complete");
+                    stopListening(true);
+                } else {
+                    renderStep();
+                }
+            };
+
+            voiceInput.addEventListener("input", checkNextButton);
+
+            // ========== Speech Recognition ==========
+            function initSpeech() {
+                const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (!SR) {
+                    showBanner("⚠️ Voice recognition not available in this browser. Please use Chrome, Edge, or Safari for voice features.", "warn");
+                    toggleMicBtn.disabled = true;
+                    return;
+                }
+
+                recognition = new SR();
+                recognition.continuous = true;
+                recognition.interimResults = true;
+                recognition.lang = "en-US";
+
+                recognition.onresult = (evt) => {
+                    let finalText = "";
+                    for (let i = evt.resultIndex; i < evt.results.length; i++) {
+                        const transcript = evt.results[i][0].transcript;
+                        if (evt.results[i].isFinal) {
+                            finalText += transcript + " ";
+                        }
+                    }
+
+                    if (finalText) {
+                        const lower = finalText.toLowerCase().trim();
+                        
+                        // Voice commands
+                        if (/\b(next|continue|next question)\b/.test(lower)) {
+                            if (!nextBtn.disabled) nextBtn.click();
+                            return;
+                        }
+                        if (/\b(back|previous)\b/.test(lower)) {
+                            backBtn.click();
+                            return;
+                        }
+                        if (/\b(skip)\b/.test(lower)) {
+                            skipBtn.click();
+                            return;
+                        }
+                        if (/\b(stop recording)\b/.test(lower)) {
+                            stopListening(true);
+                            return;
+                        }
+                        if (/\b(start recording)\b/.test(lower)) {
+                            startListening();
+                            return;
+                        }
+
+                        // Append to input
+                        voiceInput.value = (voiceInput.value ? voiceInput.value + " " : "") + finalText.trim();
+                        checkNextButton();
+                    }
+                };
+
+                recognition.onerror = (e) => {
+                    console.error("Speech error:", e.error);
+                    if (e.error === "not-allowed") {
+                        showBanner("⚠️ Microphone access denied. Please allow microphone access in your browser settings.", "warn");
+                    }
+                };
+
+                recognition.onend = () => {
+                    if (isListening && !userStoppedMic) {
+                        try {
+                            recognition.start();
+                        } catch (e) {
+                            console.error("Restart failed:", e);
+                        }
+                    } else {
+                        updateMicUI(false);
+                    }
+                };
+            }
+
+            function startListening() {
+                if (!recognition) return;
+                userStoppedMic = false;
+                try {
+                    recognition.start();
+                    isListening = true;
+                    updateMicUI(true);
+                } catch (e) {
+                    console.error("Start failed:", e);
+                }
+            }
+
+            function stopListening(userInitiated = false) {
+                if (!recognition) return;
+                if (userInitiated) userStoppedMic = true;
+                try {
+                    recognition.stop();
+                    isListening = false;
+                    updateMicUI(false);
+                } catch (e) {
+                    console.error("Stop failed:", e);
+                }
+            }
+
+            function updateMicUI(listening) {
+                if (listening) {
+                    recIndicator.classList.remove("stopped");
+                    recIndicator.classList.add("listening");
+                    recDot.classList.add("active");
+                    recText.textContent = "Recording";
+                    toggleMicBtn.textContent = "Stop Recording";
+                    toggleMicBtn.classList.remove("btn-secondary");
+                    toggleMicBtn.classList.add("btn-danger");
+                } else {
+                    recIndicator.classList.remove("listening");
+                    recIndicator.classList.add("stopped");
+                    recDot.classList.remove("active");
+                    recText.textContent = "Mic Off";
+                    toggleMicBtn.textContent = "Start Recording";
+                    toggleMicBtn.classList.remove("btn-danger");
+                    toggleMicBtn.classList.add("btn-secondary");
+                }
+            }
+
+            toggleMicBtn.onclick = () => {
+                if (isListening) {
+                    stopListening(true);
+                } else {
+                    startListening();
+                }
+            };
+
+            // ========== Export Functions ==========
+            exportJSONBtn.onclick = () => {
+                const payload = {
+                    startedAt: state.startedAt,
+                    finishedAt: new Date().toISOString(),
+                    branch: state.branch,
+                    packagingTypes: state.packagingTypes,
+                    products: state.products,
+                    answers: state.answers,
+                    uploadedFiles: state.uploadedFiles.map(f => ({ name: f.name, size: f.size, type: f.type }))
+                };
+                download(`lrparis_brief_${Date.now()}.json`, JSON.stringify(payload, null, 2));
+            };
+
+            exportPDFBtn.onclick = () => {
+                const payload = {
+                    branch: state.branch,
+                    packagingTypes: state.packagingTypes,
+                    answers: state.answers
+                };
+                
+                let content = "LR PARIS BRIEF\n";
+                content += "=".repeat(60) + "\n\n";
+                content += `Generated: ${new Date().toLocaleString()}\n`;
+                content += `Brief Type: ${state.branch.join(", ")}\n\n`;
+                
+                if (state.packagingTypes.length) {
+                    content += `Packaging Types: ${state.packagingTypes.join(", ")}\n\n`;
+                }
+                
+                content += "=".repeat(60) + "\n\n";
+                
+                state.answers.forEach((a, idx) => {
+                    content += `${idx + 1}. ${a.question}\n`;
+                    if (a.choices && a.choices.length) {
+                        content += `   Answer: ${a.choices.join(", ")}\n`;
+                    }
+                    if (a.notes) {
+                        content += `   Notes: ${a.notes}\n`;
+                    }
+                    content += "\n";
+                });
+
+                const w = window.open("", "_blank");
+                w.document.write(`
+                    <html>
+                    <head>
+                        <title>LR Paris Brief</title>
+                        <style>
+                            body { font-family: system-ui; padding: 40px; max-width: 800px; margin: 0 auto; }
+                            pre { white-space: pre-wrap; line-height: 1.6; }
+                        </style>
+                    </head>
+                    <body>
+                        <pre>${content.replace(/[&<>'"]/g, c => ({
+                            '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+                        }[c]))}</pre>
+                    </body>
+                    </html>
+                `);
+                w.document.close();
+                setTimeout(() => w.print(), 250);
+            };
+
+            restartBtn.onclick = () => {
+                if (confirm("Are you sure you want to start over? All progress will be lost.")) {
+                    resetDraft();
+                    location.reload();
+                }
+            };
+
+            // ========== Asana Integration ==========
+            asanaOpenBtn.onclick = () => {
+                asanaModal.classList.add("show");
+                asanaTokenEl.value = sessionStorage.getItem("asana_pat") || "";
+                asanaProjectEl.value = sessionStorage.getItem("asana_pid") || "";
+                asanaTaskNameEl.value = `LR Paris Brief – ${new Date().toLocaleDateString()}`;
+                asanaMsg.textContent = "";
+                asanaMsg.className = "";
+            };
+
+            asanaCancelBtn.onclick = () => {
+                asanaModal.classList.remove("show");
+            };
+
+            asanaSendBtn.onclick = async () => {
+                const token = asanaTokenEl.value.trim();
+                const projectId = asanaProjectEl.value.trim();
+                const taskName = asanaTaskNameEl.value.trim() || "Brief";
+
+                if (!token || !projectId) {
+                    asanaMsg.textContent = "⚠️ Please enter both Token and Project ID";
+                    asanaMsg.className = "error";
+                    return;
+                }
+
+                sessionStorage.setItem("asana_pat", token);
+                sessionStorage.setItem("asana_pid", projectId);
+
+                const summary = {
+                    branch: state.branch,
+                    packagingTypes: state.packagingTypes,
+                    answers: state.answers
+                };
+
+                try {
+                    asanaSendBtn.disabled = true;
+                    asanaSendBtn.textContent = "Sending...";
+                    
+                    const resp = await fetch("https://app.asana.com/api/1.0/tasks", {
+                        method: "POST",
+                        headers: {
+                            "Authorization": `Bearer ${token}`,
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            data: {
+                                projects: [projectId],
+                                name: taskName,
+                                notes: `LR Paris Brief\n\n${JSON.stringify(summary, null, 2)}`
+                            }
+                        })
+                    });
+
+                    if (!resp.ok) {
+                        const error = await resp.json();
+                        throw new Error(error.errors?.[0]?.message || `HTTP ${resp.status}`);
+                    }
+
+                    const data = await resp.json();
+                    asanaMsg.textContent = `✓ Task created successfully! (ID: ${data.data.gid})`;
+                    asanaMsg.className = "success";
+                    
+                    setTimeout(() => {
+                        asanaModal.classList.remove("show");
+                    }, 2000);
+                } catch (e) {
+                    asanaMsg.textContent = `❌ Error: ${e.message}`;
+                    asanaMsg.className = "error";
+                } finally {
+                    asanaSendBtn.disabled = false;
+                    asanaSendBtn.textContent = "Send to Asana";
+                }
+            };
+
+            // Close modal on background click
+            asanaModal.onclick = (e) => {
+                if (e.target === asanaModal) {
+                    asanaModal.classList.remove("show");
+                }
+            };
+
+            // ========== Initialization ==========
+            startBtn.onclick = () => {
+                resetDraft();
+                state.startedAt = new Date().toISOString();
+                buildQueue();
+                setScreen("questions");
+                renderStep();
+                initSpeech();
+                setTimeout(() => startListening(), 500);
+            };
+
+            // Try to restore draft
+            const restored = safeLoadDraft();
+            if (restored && state.queue?.length) {
+                setScreen("questions");
+                renderStep();
+                initSpeech();
+            } else {
+                setScreen("welcome");
+            }
+        })();
+    </script>
+</body>
+</html>
