@@ -1,26 +1,29 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Project Brief Assistant</title>
+:root { --brand: #4f46e5; } /* indigo-600 */
 
-  <!-- TailwindCSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="style.css"/>
+.card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 1rem;
+  box-shadow: 0 10px 20px rgba(2,6,23,.06), 0 4px 8px rgba(2,6,23,.04);
+}
 
-  <!-- React + ReactDOM -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+.hero-gradient {
+  background: linear-gradient(135deg, #60a5fa 0%, #4f46e5 100%); /* blue → indigo */
+  color: white;
+  border-radius: 1.5rem;
+  box-shadow: 0 16px 30px rgba(79,70,229,.25);
+}
 
-  <!-- Babel (for JSX in browser) -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-</head>
+.chip { transition: all .16s ease-in-out; }
+.chip:focus-visible { outline: 2px solid rgb(165 180 252); outline-offset: 2px; }
 
-<body class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-  <div id="root"></div>
+.pill {
+  font-size: .875rem;
+  padding: .25rem .625rem;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: white;
+}
+.pill.live { color: #dc2626; border-color: #fecaca; }
 
-  <!-- IMPORTANT: data-presets added so JSX compiles -->
-  <script type="text/babel" data-presets="env,react" src="script.js"></script>
-</body>
-</html>
+button:disabled { opacity: 0.5; cursor: not-allowed; }
