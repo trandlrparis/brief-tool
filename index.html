@@ -94,7 +94,7 @@
         <div id="welcome" class="screen active">
             <h1>LR Paris Brief Tool</h1>
             <p class="subtitle">Complete voice-powered brief creation for products and packaging</p>
-            <button class="btn" onclick="startBrief()">Start New Brief</button>
+            <button id="startBtn" class="btn" type="button">Start New Brief</button>
             <div style="margin-top:20px;">
                 <button class="btn btn-secondary" onclick="document.getElementById('loadFile').click()">Load Existing Brief</button>
                 <input type="file" id="loadFile" accept=".json" style="display:none" onchange="loadExistingBrief(event)" />
@@ -328,19 +328,16 @@
             const q = state.queue[state.step];
             if (!q) { showScreen("complete"); stopMic(); return; }
             if (q.condition && !q.condition()) { state.step++; renderQuestion(); return; }
-
             document.getElementById("questionText").textContent = q.text;
             document.getElementById("questionHint").textContent = q.hint || "";
             document.getElementById("progress").textContent = "Step " + (state.step+1) + " of " + state.queue.length;
             document.getElementById("validationError").textContent = "";
             document.getElementById("spellCheck").textContent = "";
             document.getElementById("nextBtn").disabled = true;
-
             const choicesArea = document.getElementById("choicesArea");
             const inputArea = document.getElementById("inputArea");
             choicesArea.innerHTML = "";
             inputArea.innerHTML = "";
-
             if (q.type === "single" || q.type === "multi") {
                 q.options.forEach(function(opt) {
                     const btn = document.createElement("button");
@@ -389,129 +386,38 @@
             }
         }
 
-        function toggleChoice(btn, type) {
-            if (type === "single") document.querySelectorAll(".choice-btn").forEach(b=>b.classList.remove("selected")), btn.classList.add("selected");
-            else btn.classList.toggle("selected");
-            checkNextButton();
-        }
-
+        function toggleChoice(btn, type) { if (type === "single") document.querySelectorAll(".choice-btn").forEach(b=>b.classList.remove("selected")), btn.classList.add("selected"); else btn.classList.toggle("selected"); checkNextButton(); }
         function getSelectedChoices() { return Array.from(document.querySelectorAll(".choice-btn.selected")).map(b=>b.textContent); }
-
-        function handleFileUpload(e) {
-            const files = Array.from(e.target.files);
-            files.forEach(function(file) {
-                state.uploadedFiles.push(file);
-                const fileList = document.getElementById("fileList");
-                const fileItem = document.createElement("div");
-                fileItem.className = "file-item";
-                fileItem.innerHTML = '<span>' + file.name + '</span><span class="file-remove" onclick="removeFile(\\'' + file.name + '\\')">Remove</span>';
-                fileList.appendChild(fileItem);
-            });
-            checkNextButton();
-        }
-
+        function handleFileUpload(e) { const files = Array.from(e.target.files); files.forEach(function(file) { state.uploadedFiles.push(file); const fileList = document.getElementById("fileList"); const fileItem = document.createElement("div"); fileItem.className = "file-item"; fileItem.innerHTML = '<span>' + file.name + '</span><span class="file-remove" onclick="removeFile(\'' + file.name + '\')">Remove</span>'; fileList.appendChild(fileItem); }); checkNextButton(); }
         function removeFile(filename) { state.uploadedFiles = state.uploadedFiles.filter(f=>f.name!==filename); renderQuestion(); }
-
-        function checkNextButton() {
-            const q = state.queue[state.step];
-            if (!q) return;
-            let hasAnswer = false;
-            if (q.type === "single" || q.type === "multi") {
-                const selected = getSelectedChoices().length > 0;
-                const custom = document.getElementById("customInput");
-                const customVal = custom ? custom.value.trim().length > 0 : false;
-                hasAnswer = selected || customVal;
-            } else if (q.type === "text" || q.type === "textarea") {
-                const input = document.getElementById("answerInput");
-                hasAnswer = input && input.value.trim().length > 0;
-            } else if (q.type === "productList") {
-                const input = document.getElementById("productListInput");
-                hasAnswer = input && input.value.trim().length > 0;
-            } else if (q.type === "file") hasAnswer = true;
-            document.getElementById("nextBtn").disabled = !hasAnswer;
-        }
-
-        function goNext() {
-            const q = state.queue[state.step];
-            let value = "";
-            let isValid = true;
-            if (q.type === "single" || q.type === "multi") {
-                const choices = getSelectedChoices();
-                const custom = document.getElementById("customInput");
-                const customVal = custom ? custom.value.trim() : "";
-                value = customVal || (q.type==="single" ? choices[0] : choices.join(", "));
-            } else if (q.type === "text" || q.type === "textarea") {
-                const input = document.getElementById("answerInput");
-                value = input ? input.value.trim() : "";
-                if (q.validate === "jobNumber") { if(!validateJobNumber(value)){ document.getElementById("validationError").textContent = "Please enter a valid 6-digit job number"; isValid=false; } }
-                else if (q.validate === "date") value = parseDate(value);
-            } else if (q.type === "productList") {
-                const input = document.getElementById("productListInput");
-                value = input ? input.value.trim() : "";
-                state.productList = value.split('\n').filter(l=>l.trim().length>0);
-            } else if (q.type === "file") value = state.uploadedFiles.length + " file(s) uploaded";
-            if (!isValid) return;
-            state.answers.push({ id: q.id, question: q.text, answer: value });
-            if (q.id === "entry") { state.branch = getSelectedChoices(); expandQueue(); }
-            if (q.id === "pkgTypes") {
-                const custom = document.getElementById("customInput");
-                const customVal = custom ? custom.value.trim() : "";
-                state.packagingTypes = getSelectedChoices();
-                if (customVal && state.packagingTypes.indexOf(customVal) === -1) state.packagingTypes.push(customVal);
-                expandQueue();
-            }
-            if (q.id === "productList") expandQueue();
-            state.step++; renderQuestion();
-        }
-
+        function checkNextButton() { const q = state.queue[state.step]; if (!q) return; let hasAnswer=false; if (q.type==="single"||q.type==="multi"){ const selected=getSelectedChoices().length>0; const custom=document.getElementById("customInput"); const customVal=custom?custom.value.trim().length>0:false; hasAnswer=selected||customVal; } else if(q.type==="text"||q.type==="textarea"){ const input=document.getElementById("answerInput"); hasAnswer=input&&input.value.trim().length>0; } else if(q.type==="productList"){ const input=document.getElementById("productListInput"); hasAnswer=input&&input.value.trim().length>0; } else if(q.type==="file") hasAnswer=true; document.getElementById("nextBtn").disabled=!hasAnswer; }
+        function goNext() { const q=state.queue[state.step]; let value=""; let isValid=true; if(q.type==="single"||q.type==="multi"){ const choices=getSelectedChoices(); const custom=document.getElementById("customInput"); const customVal=custom?custom.value.trim():""; value=customVal||(q.type==="single"?choices[0]:choices.join(", ")); } else if(q.type==="text"||q.type==="textarea"){ const input=document.getElementById("answerInput"); value=input?input.value.trim():""; if(q.validate==="jobNumber"){ if(!validateJobNumber(value)){ document.getElementById("validationError").textContent="Please enter a valid 6-digit job number"; isValid=false; } } else if(q.validate==="date") value=parseDate(value); } else if(q.type==="productList"){ const input=document.getElementById("productListInput"); value=input?input.value.trim():""; state.productList=value.split('\n').filter(l=>l.trim().length>0); } else if(q.type==="file") value=state.uploadedFiles.length+" file(s) uploaded"; if(!isValid) return; state.answers.push({id:q.id,question:q.text,answer:value}); if(q.id==="entry"){ state.branch=getSelectedChoices(); expandQueue(); } if(q.id==="pkgTypes"){ const custom=document.getElementById("customInput"); const customVal=custom?custom.value.trim():""; state.packagingTypes=getSelectedChoices(); if(customVal&&state.packagingTypes.indexOf(customVal)===-1) state.packagingTypes.push(customVal); expandQueue(); } if(q.id==="productList") expandQueue(); state.step++; renderQuestion(); }
         function goBack(){ if(state.step>0){ state.step--; renderQuestion(); } }
-        function skipQuestion(){ const q = state.queue[state.step]; state.answers.push({id:q.id,question:q.text,answer:"Skipped"}); state.step++; renderQuestion(); }
-
-        function showJumpToModal() {
-            const jumpList = document.getElementById("jumpList"); jumpList.innerHTML = "";
-            state.queue.forEach(function(q, idx) {
-                const btn = document.createElement("button");
-                btn.className = "jump-btn";
-                btn.textContent = (idx+1) + ". " + q.text.substring(0,50);
-                btn.onclick = function(){ jumpToQuestion(idx); };
-                jumpList.appendChild(btn);
-            });
-            document.getElementById("jumpModal").classList.add("active");
-        }
-        function closeJumpModal(){ document.getElementById("jumpModal").classList.remove("active"); }
-        function jumpToQuestion(idx){ state.step = idx; closeJumpModal(); renderQuestion(); }
-
+        function skipQuestion(){ const q=state.queue[state.step]; state.answers.push({id:q.id,question:q.text,answer:"Skipped"}); state.step++; renderQuestion(); }
+        function showJumpToModal(){ const jumpList=document.getElementById("jumpList"); jumpList.innerHTML=""; state.queue.forEach(function(q,idx){ const btn=document.createElement("button"); btn.className="jump-btn"; btn.textContent=(idx+1)+". "+q.text.substring(0,50); btn.onclick=function(){ jumpToQuestion(idx); }; jumpList.appendChild(btn); }); document.getElementById("jumpModal").classList.add('active'); }
+        function closeJumpModal(){ document.getElementById("jumpModal").classList.remove('active'); }
+        function jumpToQuestion(idx){ state.step=idx; closeJumpModal(); renderQuestion(); }
         function editBrief(){ showScreen("questions"); state.step=0; renderQuestion(); initSpeech(); }
 
-        function initSpeech() {
-            const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SR) { showBanner("Voice recognition not available. Use Chrome, Edge, or Safari."); document.getElementById("micBtn").disabled = true; return; }
-            recognition = new SR(); recognition.continuous = true; recognition.interimResults = true;
-            recognition.onresult = function(e){
-                let final = "";
-                for(let i=e.resultIndex;i<e.results.length;i++){ if(e.results[i].isFinal) final += e.results[i][0].transcript + " "; }
-                if(final){
-                    const lower = final.toLowerCase();
-                    if(/\b(next|continue)\b/.test(lower) && !document.getElementById("nextBtn").disabled){ goNext(); return; }
-                    if(/\bback\b/.test(lower)){ goBack(); return; }
-                    if(/\bskip\b/.test(lower)){ skipQuestion(); return; }
-                    if(/\bstop recording\b/.test(lower)){ stopMic(); return; }
-                    const input = document.getElementById("answerInput") || document.getElementById("productListInput");
-                    if(input){ input.value = (input.value + " " + final).trim(); checkNextButton(); }
-                }
-            };
-            recognition.onerror = function(e){ console.error("Speech error:", e.error); };
-            recognition.onend = function(){ if(isListening){ try{ recognition.start(); } catch(e){} } };
+        function initSpeech(){ const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR){ showBanner("Voice recognition not available. Use Chrome, Edge, or Safari."); document.getElementById("micBtn").disabled=true; return; } recognition=new SR(); recognition.continuous=true; recognition.interimResults=true; recognition.onresult=function(e){ let final=""; for(let i=e.resultIndex;i<e.results.length;i++){ if(e.results[i].isFinal) final+=e.results[i][0].transcript+" "; } if(final){ const lower=final.toLowerCase(); if(/\b(next|continue)\b/.test(lower)&&!document.getElementById("nextBtn").disabled){ goNext(); return; } if(/\bback\b/.test(lower)){ goBack(); return; } if(/\bskip\b/.test(lower)){ skipQuestion(); return; } if(/\bstop recording\b/.test(lower)){ stopMic(); return; } const input=document.getElementById("answerInput")||document.getElementById("productListInput"); if(input){ input.value=(input.value+" "+final).trim(); checkNextButton(); } } };
+        recognition.onerror=function(e){ console.error("Speech error:", e.error); };
+        recognition.onend=function(){ if(isListening){ try{ recognition.start(); }catch(e){} } };
         }
-
         function toggleMic(){ if(isListening) stopMic(); else startMic(); }
         function startMic(){ if(!recognition) return; try{ recognition.start(); isListening=true; document.getElementById("micDot").classList.add("active"); document.getElementById("micStatus").textContent="Recording"; document.getElementById("micBtn").textContent="Stop Recording"; }catch(e){} }
         function stopMic(){ if(!recognition) return; try{ recognition.stop(); isListening=false; document.getElementById("micDot").classList.remove("active"); document.getElementById("micStatus").textContent="Mic Off"; document.getElementById("micBtn").textContent="Start Recording"; }catch(e){} }
-
-        function exportJSON(){ const data = JSON.stringify({ startedAt: state.startedAt, finishedAt: new Date().toISOString(), branch: state.branch, packagingTypes: state.packagingTypes, productList: state.productList, answers: state.answers, fileCount: state.uploadedFiles.length }, null, 2); const blob = new Blob([data], {type:"application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "lrparis_brief_" + Date.now() + ".json"; a.click(); URL.revokeObjectURL(url); }
-        function exportZIP(){ if(typeof JSZip === 'undefined'){ alert('ZIP library not loaded. Downloading JSON instead.'); exportJSON(); return; } /* omitted for brevity */ }
+        function exportJSON(){ const data=JSON.stringify({ startedAt:state.startedAt, finishedAt:new Date().toISOString(), branch:state.branch, packagingTypes:state.packagingTypes, productList:state.productList, answers:state.answers, fileCount:state.uploadedFiles.length }, null, 2); const blob=new Blob([data], {type:"application/json"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="lrparis_brief_"+Date.now()+".json"; a.click(); URL.revokeObjectURL(url); }
+        function exportZIP(){ if(typeof JSZip==='undefined'){ alert('ZIP library not loaded. Downloading JSON instead.'); exportJSON(); return; } }
         function exportPDF(){ window.print(); }
-        function sendToAsana(){ /* implement server-side Asana flow if desired */ showBanner('Asana send not configured',3000); }
+        function sendToAsana(){ showBanner('Asana send not configured',3000); }
+
+        // Defensive UI wiring after DOM ready
+        window.addEventListener('DOMContentLoaded', function(){
+            const startBtn=document.getElementById('startBtn');
+            if(startBtn){ startBtn.addEventListener('click', function(){ try{ startBrief(); }catch(err){ console.error('startBrief failed', err); showBanner('Start failed: '+(err.message||err),5000); } }); }
+            const loadFile=document.getElementById('loadFile');
+            if(loadFile){ loadFile.addEventListener('change', function(e){ try{ loadExistingBrief(e); }catch(err){ console.error('loadExistingBrief failed', err); showBanner('Load failed: '+(err.message||err),5000); } }); }
+        });
     </script>
 </body>
 </html>
