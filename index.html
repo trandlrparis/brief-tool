@@ -1,30 +1,61 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Brief Questionnaire</title>
-  <meta name="description" content="Brief Questionnaire - placeholder site">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Brief Questionnaire — trandlrparis/brief-tool</title>
+  <meta name="description" content="Placeholder site for trandlrparis/brief-tool — add your built site or replace this file." />
+  <meta name="theme-color" content="#0a6cff" />
+  <!-- Inline SVG favicon -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230a6cff'/%3E%3Ctext x='50' y='57' font-size='44' text-anchor='middle' font-family='system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial' fill='white'%3EB%3C/text%3E%3C/svg%3E" />
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;line-height:1.6;color:#111;background:#f7f7f8;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-    .card{background:#fff;border:1px solid #e6e6e9;border-radius:12px;padding:28px 32px;max-width:720px;box-shadow:0 6px 18px rgba(20,20,30,0.06)}
-    a.button{display:inline-block;margin-top:16px;padding:10px 14px;background:#0366d6;color:#fff;text-decoration:none;border-radius:8px}
-    pre{background:#f3f4f6;padding:12px;border-radius:8px;overflow:auto}
+    :root{--bg:#f6f7fb;--card:#fff;--muted:#6b7280;--accent:#0a6cff}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;color:#0f172a;background:var(--bg)}
+    .wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:28px}
+    .card{width:100%;max-width:880px;background:var(--card);border-radius:12px;box-shadow:0 8px 30px rgba(12,15,23,.08);padding:36px;box-sizing:border-box;border:1px solid rgba(15,23,42,.04)}
+    header{display:flex;gap:16px;align-items:center}
+    .logo{width:56px;height:56px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--accent),#0057db);color:white;font-weight:700;font-size:20px}
+    h1{margin:0;font-size:20px}
+    p.lead{margin:10px 0 0;color:var(--muted)}
+    .actions{margin-top:20px;display:flex;gap:12px;flex-wrap:wrap}
+    .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;text-decoration:none;font-weight:600;box-shadow:0 2px 0 rgba(0,0,0,.02)}
+    .btn.primary{background:var(--accent);color:#fff}
+    .btn.ghost{background:transparent;color:var(--accent);border:1px solid rgba(10,108,255,.12)}
+    .note{margin-top:22px;color:#334155;background:#f8fafc;padding:14px;border-radius:8px;border:1px dashed rgba(51,65,85,.06)}
+    code{background:#0f172a10;padding:2px 6px;border-radius:6px;font-family:SFMono-Regular,Menlo,monospace;font-size:13px}
+    footer{margin-top:18px;color:var(--muted);font-size:13px}
+    @media (max-width:520px){.card{padding:20px}.logo{width:48px;height:48px}}
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>Brief Questionnaire</h1>
-    <p>This is a placeholder index.html for the repository <strong>trandlrparis/brief-tool</strong>. If you intended to publish a built site (React/Vite/other), please add the generated static files (including an <code>index.html</code>) to the branch and folder configured for GitHub Pages.</p>
-    <p>If you want this repository to serve a static site from the <code>main</code> branch root, this file will allow the site to load at <code>https://trandlrparis.github.io/brief-tool/</code>.</p>
-    <a class="button" href="https://github.com/trandlrparis/brief-tool">Open repository on GitHub</a>
-    <h2 style="margin-top:20px">Quick next steps</h2>
-    <ol>
-      <li>If you have a build (dist/build), copy its contents to the repository root or the <code>docs/</code> folder and push.</li>
-      <li>Or configure GitHub Pages to publish from the branch/folder where your built files live (Settings → Pages).</li>
-    </ol>
-    <p style="margin-top:12px">Current contents preview:</p>
-    <pre>&lt;!-- index.html placeholder --&gt;</pre>
+  <div class="wrap">
+    <main class="card" role="main" aria-labelledby="title">
+      <header>
+        <div class="logo" aria-hidden="true">B</div>
+        <div>
+          <h1 id="title">Brief Questionnaire</h1>
+          <p class="lead">A placeholder site for the repository <strong>trandlrparis/brief-tool</strong>. Replace or extend this file with your built site files to serve a full site via GitHub Pages.</p>
+        </div>
+      </header>
+
+      <div class="actions" aria-hidden="false">
+        <a class="btn primary" href="https://github.com/trandlrparis/brief-tool" target="_blank" rel="noopener">View repository</a>
+        <a class="btn ghost" href="https://github.com/trandlrparis/brief-tool/settings/pages" target="_blank" rel="noopener">Open Pages settings</a>
+        <a class="btn" href="https://docs.github.com/en/pages/getting-started-with-github-pages" target="_blank" rel="noopener">GitHub Pages docs</a>
+      </div>
+
+      <div class="note" role="note">
+        Quick tips:
+        <ul style="margin:8px 0 0 18px;color:inherit">
+          <li>If you have a build folder (dist or build), copy its contents into the repository root or <code>docs/</code>, then set Pages to publish from that location.</li>
+          <li>To auto-deploy a frontend project, add a GitHub Action or use the <code>gh-pages</code> package to publish to the <code>gh-pages</code> branch.</li>
+        </ul>
+      </div>
+
+      <footer>
+        After you update this file or push built assets, allow a minute or two for GitHub Pages to publish. If you'd like, I can push this version to the <code>main</code> branch now.
+      </footer>
+    </main>
   </div>
 </body>
 </html>
